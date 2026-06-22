@@ -117,3 +117,26 @@ page lets you enter your home Wi-Fi; the device saves it and reboots to join.
 **OTA updates:** the device checks this repo's GitHub Releases daily and
 installs a `pocketdns.bin` asset whose release tag differs from the running
 `version.txt`.
+
+## Blocklist engine
+
+The cloud blocklist holds ~80,000 ad/tracker domains (Hagezi's list), stored as
+32-bit hashes in sorted buckets **on flash**, not in RAM — so list size is
+bounded by the 4 MB flash, not the ESP32's ~tens of KB of free heap. The
+multi-MB source is **stream-hashed during download** (never stored whole), and
+lookups binary-search each parent suffix of the queried name on flash. Add your
+own domains via the dashboard's *Block a website* box; those (and the whitelist)
+are checked first, in RAM.
+
+### What DNS blocking can and can't do (read before claiming "blocks all ads")
+
+This is a **DNS** filter, like Pi-hole. It blocks third-party ad/tracker
+**domains**. It fundamentally **cannot**:
+
+- **Block YouTube ads** — they're served from `googlevideo.com`, the same
+  domain as the videos; DNS can't tell ad from content, and the stream is
+  encrypted. No DNS blocker (Pi-hole, AdGuard-DNS, NextDNS) can do this. Only
+  in-app/in-browser blockers (uBlock Origin, Brave, ReVanced) can, because they
+  run inside the client with the decrypted page.
+- **Block first-party ads** served from the same domain as the content (common
+  on news sites) — same reason.

@@ -11,6 +11,7 @@
 #include "cJSON.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/semphr.h"
 
 static const char *TAG = "blocklist";
 
@@ -54,20 +55,56 @@ static char s_manualblock[MANUALBLOCK_MAX][MANUALBLOCK_MAX_DOMAIN];
 static size_t s_manualblock_count = 0;
 
 /* --------------------------------------------------------------------------
- * Cloud blocklist sync: periodically fetch a plain domain-per-line list
- * and use it instead of the small built-in seed list above. Firebog's
- * Prigent-Ads list is ~70KB / ~4300 domains - comfortably under our
- * 832KB LittleFS partition, unlike the larger unified lists (Easylist is
- * ~900KB, AdguardDNS is ~3MB on their own).
+ * Cloud blocklist: a large domain list (tens of thousands of entries),
+ * stored as 32-bit FNV-1a hashes in NUM_BUCKETS sorted buckets ON FLASH.
+ *
+ * Why hashes on flash instead of strings in RAM: a modern blocklist is
+ * 50-150k domains (1-3 MB of text) and the ESP32 has only tens of KB of
+ * free heap - the strings can't live in RAM. We stream-hash the list as
+ * it downloads (the multi-MB text is never stored, only ~4 bytes/domain),
+ * bucket the hashes, sort each bucket, and binary-search them on flash per
+ * lookup. The whole list never sits in RAM at once.
+ *
+ * Lookups hash each parent suffix of the queried name ("a.b.tracker.com"
+ * -> "a.b.tracker.com", "b.tracker.com", "tracker.com") and check each in
+ * its bucket, so blocking "tracker.com" also blocks every subdomain.
  * ------------------------------------------------------------------------ */
-#define BLOCKLIST_URL       "https://v.firebog.net/hosts/Prigent-Ads.txt"
-#define BLOCKLIST_PATH      "/littlefs/blocklist.txt"
-#define BLOCKLIST_TMP_PATH  "/littlefs/blocklist.txt.tmp"
-#define SYNC_INTERVAL_MS    (24UL * 60 * 60 * 1000)  /* once a day */
+#define BLOCKLIST_URL    "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/light.txt"
+#define IDX_PATH         "/littlefs/blockidx.bin"
+#define IDX_TMP_PATH     "/littlefs/blockidx.tmp"
+#define RAW_TMP_PATH     "/littlefs/blockraw.tmp"
+#define NUM_BUCKETS      64u    /* power of two: bucket = hash & (NUM_BUCKETS-1) */
+#define IDX_HEADER_BYTES (NUM_BUCKETS * (uint32_t)sizeof(uint32_t))
+#define MAX_DOMAINS      80000u /* cap so raw+index files fit the 832KB partition */
+#define SYNC_INTERVAL_MS (24UL * 60 * 60 * 1000)  /* once a day */
 
-static char *s_dynamic_buf = NULL;       /* whole downloaded file, lines NUL-split in place */
-static char **s_dynamic_entries = NULL;  /* pointers into s_dynamic_buf, one per domain */
-static size_t s_dynamic_count = 0;
+/* In-RAM index header: per-bucket entry count + byte offset of each
+ * bucket's sorted hashes within IDX_PATH. The hashes themselves stay on
+ * flash. Guarded by s_idx_lock because the background sync task swaps the
+ * index file while the DNS task is searching it. */
+static uint32_t s_bucket_count[NUM_BUCKETS];
+static uint32_t s_bucket_off[NUM_BUCKETS];
+static bool     s_idx_ready = false;
+static FILE    *s_idx_fp = NULL;             /* persistent read handle into IDX_PATH */
+static SemaphoreHandle_t s_idx_lock = NULL;
+
+static uint32_t domain_hash(const char *s)
+{
+    uint32_t h = 2166136261u;            /* FNV-1a, case-insensitive */
+    for (; *s; s++) {
+        unsigned char c = (unsigned char)*s;
+        if (c >= 'A' && c <= 'Z') c += 32;
+        h ^= c;
+        h *= 16777619u;
+    }
+    return h;
+}
+
+static int cmp_u32(const void *a, const void *b)
+{
+    uint32_t x = *(const uint32_t *)a, y = *(const uint32_t *)b;
+    return (x > y) - (x < y);
+}
 
 /* True if `domain` is exactly `entry`, or a subdomain of it (e.g.
  * "ads.doubleclick.net" matches entry "doubleclick.net", but
@@ -89,181 +126,258 @@ static bool domain_matches(const char *domain, const char *entry)
     return domain[domain_len - entry_len - 1] == '.';
 }
 
-/* Pure (no I/O) line splitter: walks a NUL-terminated, mutable buffer,
- * NUL-terminating each line in place and collecting pointers to the
- * usable ones (skipping blank lines, "#" comments, and a trailing "\r"
- * for CRLF-served lists). Kept separate from the download/file-loading
- * code below so it can be unit tested without a mounted filesystem or a
- * network connection. Returns the entry count; *out_entries is a
- * caller-owned array (malloc'd) on success, untouched (NULL) if there's
- * nothing usable in buf.
- */
-static size_t parse_domain_lines(char *buf, char ***out_entries)
+/* Read the committed index file's header into RAM (per-bucket counts +
+ * offsets) and keep a persistent read handle open. Call with s_idx_lock
+ * held. Returns true if a usable index was loaded. */
+static bool index_load_locked(void)
 {
-    size_t count = 0;
-    for (char *p = buf; *p != '\0'; ) {
-        char *line_end = strchr(p, '\n');
-        size_t line_len = line_end ? (size_t)(line_end - p) : strlen(p);
-        if (line_len > 0 && p[0] != '#' && p[0] != '\r') {
-            count++;
-        }
-        if (!line_end) {
-            break;
-        }
-        p = line_end + 1;
-    }
+    if (s_idx_fp) { fclose(s_idx_fp); s_idx_fp = NULL; }
+    s_idx_ready = false;
 
-    if (count == 0) {
-        *out_entries = NULL;
-        return 0;
-    }
-
-    char **entries = malloc(count * sizeof(char *));
-    if (entries == NULL) {
-        *out_entries = NULL;
-        return 0;
-    }
-
-    size_t idx = 0;
-    char *p = buf;
-    while (*p != '\0' && idx < count) {
-        char *line_end = strchr(p, '\n');
-        if (line_end != NULL) {
-            *line_end = '\0';
-        }
-        size_t len = strlen(p);
-        if (len > 0 && p[len - 1] == '\r') {
-            p[len - 1] = '\0';
-        }
-        if (p[0] != '\0' && p[0] != '#') {
-            entries[idx++] = p;
-        }
-        if (line_end == NULL) {
-            break;
-        }
-        p = line_end + 1;
-    }
-
-    *out_entries = entries;
-    return idx;
-}
-
-static bool load_dynamic_list(void)
-{
-    FILE *f = fopen(BLOCKLIST_PATH, "r");
+    FILE *f = fopen(IDX_PATH, "rb");
     if (f == NULL) {
         return false;
     }
-
-    fseek(f, 0, SEEK_END);
-    long size = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    if (size <= 0) {
+    if (fread(s_bucket_count, sizeof(uint32_t), NUM_BUCKETS, f) != NUM_BUCKETS) {
         fclose(f);
         return false;
     }
-
-    /* Free the previous list (if any) before allocating the new one,
-     * rather than holding both at once - on this device's heap budget,
-     * needing 2x the buffer plus 2x the ~34KB entry-pointer array at the
-     * same time is enough to fail the allocation outright. Matching
-     * falls back to the small built-in seed list for the brief gap,
-     * which is safe - just temporarily less comprehensive. */
-    free(s_dynamic_buf);
-    free(s_dynamic_entries);
-    s_dynamic_buf = NULL;
-    s_dynamic_entries = NULL;
-    s_dynamic_count = 0;
-
-    char *buf = malloc((size_t)size + 1);
-    if (buf == NULL) {
-        fclose(f);
-        ESP_LOGE(TAG, "Out of memory loading blocklist (%ld bytes)", size);
-        return false;
+    uint32_t off = IDX_HEADER_BYTES, total = 0;
+    for (unsigned b = 0; b < NUM_BUCKETS; b++) {
+        s_bucket_off[b] = off;
+        off += s_bucket_count[b] * (uint32_t)sizeof(uint32_t);
+        total += s_bucket_count[b];
     }
-    size_t n = fread(buf, 1, (size_t)size, f);
-    fclose(f);
-    buf[n] = '\0';
-
-    char **entries = NULL;
-    size_t count = parse_domain_lines(buf, &entries);
-    if (count == 0) {
-        free(buf);
-        free(entries);
-        ESP_LOGW(TAG, "Downloaded blocklist had no usable entries");
-        return false;
-    }
-
-    s_dynamic_buf = buf;
-    s_dynamic_entries = entries;
-    s_dynamic_count = count;
-
-    ESP_LOGI(TAG, "Loaded %u domains from cloud blocklist", (unsigned)s_dynamic_count);
+    s_idx_fp = f;
+    s_idx_ready = true;
+    ESP_LOGI(TAG, "Cloud blocklist active: %u domains (hash index on flash)", (unsigned)total);
     return true;
 }
 
-static FILE *s_download_fp = NULL;
+/* Binary-search one hash in its bucket on flash. Call with s_idx_lock held. */
+static bool index_contains_hash_locked(uint32_t target)
+{
+    unsigned b = target & (NUM_BUCKETS - 1);
+    uint32_t n = s_bucket_count[b];
+    if (n == 0 || s_idx_fp == NULL) {
+        return false;
+    }
+    uint32_t lo = 0, hi = n;
+    while (lo < hi) {
+        uint32_t mid = lo + (hi - lo) / 2;
+        uint32_t val;
+        if (fseek(s_idx_fp, s_bucket_off[b] + mid * (uint32_t)sizeof(uint32_t), SEEK_SET) != 0) {
+            return false;
+        }
+        if (fread(&val, sizeof(uint32_t), 1, s_idx_fp) != 1) {
+            return false;
+        }
+        if (val == target) return true;
+        if (val < target) lo = mid + 1; else hi = mid;
+    }
+    return false;
+}
+
+/* True if `domain` or any parent suffix (down to, but not including, the
+ * bare TLD) is in the cloud index. */
+static bool index_blocks_domain(const char *domain)
+{
+    bool blocked = false;
+    xSemaphoreTake(s_idx_lock, portMAX_DELAY);
+    if (s_idx_ready) {
+        const char *p = domain;
+        int labels = 1;
+        for (const char *q = domain; *q; q++) {
+            if (*q == '.') labels++;
+        }
+        while (labels >= 2) {
+            if (index_contains_hash_locked(domain_hash(p))) {
+                blocked = true;
+                break;
+            }
+            const char *dot = strchr(p, '.');
+            if (dot == NULL) break;
+            p = dot + 1;
+            labels--;
+        }
+    }
+    xSemaphoreGive(s_idx_lock);
+    return blocked;
+}
+
+/* ---- download: stream-hash the source list (text never stored whole) ---- */
+static FILE   *s_raw_fp = NULL;
+static char    s_dl_line[256];
+static size_t  s_dl_len = 0;
+static uint32_t s_dl_domains = 0;
+
+static void dl_flush_line(void)
+{
+    s_dl_line[s_dl_len] = '\0';
+    char *line = s_dl_line;
+    if (s_dl_len && line[s_dl_len - 1] == '\r') {
+        line[--s_dl_len] = '\0';
+    }
+    if (s_dl_len == 0 || line[0] == '#' || line[0] == '!') {
+        s_dl_len = 0;
+        return;
+    }
+    /* hosts-format lines ("0.0.0.0 domain") -> take the token after the
+     * last space/tab; plain domain lines pass through unchanged. */
+    char *sp = strrchr(line, ' ');
+    char *tab = strrchr(line, '\t');
+    if (tab && (!sp || tab > sp)) sp = tab;
+    char *dom = sp ? sp + 1 : line;
+
+    if (dom[0] != '\0' && strchr(dom, '/') == NULL && s_dl_domains < MAX_DOMAINS) {
+        uint32_t h = domain_hash(dom);
+        fwrite(&h, sizeof(uint32_t), 1, s_raw_fp);
+        s_dl_domains++;
+    }
+    s_dl_len = 0;
+}
 
 static esp_err_t http_event_handler(esp_http_client_event_t *evt)
 {
-    if (evt->event_id == HTTP_EVENT_ON_DATA && s_download_fp != NULL) {
-        fwrite(evt->data, 1, evt->data_len, s_download_fp);
+    if (evt->event_id == HTTP_EVENT_ON_DATA && s_raw_fp != NULL) {
+        const char *d = (const char *)evt->data;
+        for (int i = 0; i < evt->data_len; i++) {
+            char c = d[i];
+            if (c == '\n') {
+                dl_flush_line();
+            } else if (s_dl_len < sizeof(s_dl_line) - 1) {
+                s_dl_line[s_dl_len++] = c;
+            }
+            /* overlong lines (shouldn't happen for domains) just stop
+             * accumulating; the tail is dropped at the next newline. */
+        }
     }
     return ESP_OK;
 }
 
-static bool download_blocklist(void)
+static bool download_to_raw(void)
 {
-    s_download_fp = fopen(BLOCKLIST_TMP_PATH, "w");
-    if (s_download_fp == NULL) {
-        ESP_LOGE(TAG, "Could not open %s for writing", BLOCKLIST_TMP_PATH);
+    s_raw_fp = fopen(RAW_TMP_PATH, "wb");
+    if (s_raw_fp == NULL) {
         return false;
     }
+    s_dl_len = 0;
+    s_dl_domains = 0;
 
     esp_http_client_config_t config = {
         .url = BLOCKLIST_URL,
         .event_handler = http_event_handler,
-        .timeout_ms = 20000,
+        .timeout_ms = 60000,
         .crt_bundle_attach = esp_crt_bundle_attach,
+        .buffer_size = 2048,
+        .user_agent = "PocketDNS",
     };
     esp_http_client_handle_t client = esp_http_client_init(&config);
     esp_err_t err = esp_http_client_perform(client);
     int status = esp_http_client_get_status_code(client);
     esp_http_client_cleanup(client);
 
-    fclose(s_download_fp);
-    s_download_fp = NULL;
+    if (s_dl_len > 0) {
+        dl_flush_line();  /* final line if it had no trailing newline */
+    }
+    fclose(s_raw_fp);
+    s_raw_fp = NULL;
 
     if (err != ESP_OK || status != 200) {
         ESP_LOGW(TAG, "Blocklist download failed: %s (HTTP %d)", esp_err_to_name(err), status);
-        remove(BLOCKLIST_TMP_PATH);
+        remove(RAW_TMP_PATH);
         return false;
     }
+    ESP_LOGI(TAG, "Downloaded and hashed %u domains", (unsigned)s_dl_domains);
+    return true;
+}
+
+/* Turn the unsorted raw hash file into the bucketed, per-bucket-sorted
+ * index file. One bucket is held in RAM at a time, so peak memory is just
+ * the largest bucket (~a few KB) rather than the whole list. */
+static bool build_index(void)
+{
+    FILE *raw = fopen(RAW_TMP_PATH, "rb");
+    if (raw == NULL) {
+        return false;
+    }
+
+    uint32_t counts[NUM_BUCKETS] = {0};
+    uint32_t h;
+    while (fread(&h, sizeof(uint32_t), 1, raw) == 1) {
+        counts[h & (NUM_BUCKETS - 1)]++;
+    }
+
+    FILE *out = fopen(IDX_TMP_PATH, "wb");
+    if (out == NULL) {
+        fclose(raw);
+        return false;
+    }
+    fwrite(counts, sizeof(uint32_t), NUM_BUCKETS, out);  /* header */
+
+    for (unsigned b = 0; b < NUM_BUCKETS; b++) {
+        if (counts[b] == 0) {
+            continue;
+        }
+        uint32_t *arr = malloc(counts[b] * sizeof(uint32_t));
+        if (arr == NULL) {
+            fclose(raw);
+            fclose(out);
+            remove(IDX_TMP_PATH);
+            return false;
+        }
+        uint32_t k = 0;
+        fseek(raw, 0, SEEK_SET);
+        while (fread(&h, sizeof(uint32_t), 1, raw) == 1) {
+            if ((h & (NUM_BUCKETS - 1)) == b) arr[k++] = h;
+        }
+        qsort(arr, k, sizeof(uint32_t), cmp_u32);
+        fwrite(arr, sizeof(uint32_t), k, out);
+        free(arr);
+    }
+    fclose(raw);
+    fclose(out);
     return true;
 }
 
 static void do_sync(void)
 {
-    ESP_LOGI(TAG, "Syncing blocklist from %s", BLOCKLIST_URL);
-    if (download_blocklist()) {
-        remove(BLOCKLIST_PATH);
-        rename(BLOCKLIST_TMP_PATH, BLOCKLIST_PATH);
-        load_dynamic_list();
-    } else {
-        ESP_LOGW(TAG, "Blocklist sync failed - keeping the existing list");
+    ESP_LOGI(TAG, "Syncing cloud blocklist (downloading + indexing, ~1 min)...");
+    if (!download_to_raw()) {
+        return;  /* keep current index */
     }
+
+    /* Drop the old index before building the new one: the raw file and the
+     * new index together are ~640KB, and keeping the old index too would
+     * overflow the 832KB partition. Lookups fall back to the small seed
+     * list during the brief rebuild. */
+    xSemaphoreTake(s_idx_lock, portMAX_DELAY);
+    if (s_idx_fp) { fclose(s_idx_fp); s_idx_fp = NULL; }
+    s_idx_ready = false;
+    remove(IDX_PATH);
+    xSemaphoreGive(s_idx_lock);
+
+    if (!build_index()) {
+        ESP_LOGW(TAG, "Blocklist index build failed");
+        remove(RAW_TMP_PATH);
+        return;
+    }
+    remove(RAW_TMP_PATH);
+
+    xSemaphoreTake(s_idx_lock, portMAX_DELAY);
+    rename(IDX_TMP_PATH, IDX_PATH);
+    index_load_locked();
+    xSemaphoreGive(s_idx_lock);
 }
 
 static void blocklist_sync_task(void *pvParameters)
 {
-    /* blocklist_init() already loaded a cached copy from a previous run,
-     * if there was one - only sync immediately on a genuinely fresh
-     * device, so we're not redundantly re-fetching (and momentarily
-     * double-allocating) a list we just finished loading seconds ago. */
-    if (s_dynamic_count == 0) {
+    /* Only sync immediately if there's no usable index yet (fresh device);
+     * otherwise wait for the daily interval so we don't rebuild a list we
+     * just loaded at boot. */
+    if (!s_idx_ready) {
         do_sync();
     }
-
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(SYNC_INTERVAL_MS));
         do_sync();
@@ -495,14 +609,23 @@ char *blocklist_manual_to_json(void)
 
 esp_err_t blocklist_init(void)
 {
+    if (s_idx_lock == NULL) {
+        s_idx_lock = xSemaphoreCreateMutex();
+    }
+
+    /* Remove the old string-list file from the previous design, if present,
+     * so it doesn't waste the tight flash budget the index build needs. */
+    remove("/littlefs/blocklist.txt");
+    remove("/littlefs/blocklist.txt.tmp");
+
     whitelist_load();
     manualblock_load();
 
-    if (load_dynamic_list()) {
-        ESP_LOGI(TAG, "Using previously synced cloud blocklist (%u domains)",
-                 (unsigned)s_dynamic_count);
-    } else {
-        ESP_LOGI(TAG, "No cloud blocklist yet - using %u built-in seed entries",
+    xSemaphoreTake(s_idx_lock, portMAX_DELAY);
+    bool have_idx = index_load_locked();
+    xSemaphoreGive(s_idx_lock);
+    if (!have_idx) {
+        ESP_LOGI(TAG, "No cloud blocklist yet - using %u built-in seed entries until first sync",
                  (unsigned)BLOCKLIST_COUNT);
     }
     ESP_LOGI(TAG, "%u whitelist, %u manual-block entries loaded",
@@ -526,15 +649,11 @@ bool blocklist_is_blocked(const char *domain)
         }
     }
 
-    if (s_dynamic_count > 0) {
-        for (size_t i = 0; i < s_dynamic_count; i++) {
-            if (domain_matches(domain, s_dynamic_entries[i])) {
-                return true;
-            }
-        }
-        return false;
+    /* Cloud blocklist (flash hash index) once it's loaded; until then,
+     * fall back to the small built-in seed list. */
+    if (s_idx_ready) {
+        return index_blocks_domain(domain);
     }
-
     for (size_t i = 0; i < BLOCKLIST_COUNT; i++) {
         if (domain_matches(domain, s_blocklist[i])) {
             return true;
