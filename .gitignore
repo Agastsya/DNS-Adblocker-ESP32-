@@ -1,0 +1,14 @@
+# ESP-IDF build artifacts and machine-generated config
+build/
+sdkconfig
+sdkconfig.old
+
+# Component manager downloads (regenerated from idf_component.yml)
+managed_components/
+dependencies.lock
+
+# Editor / OS noise
+.vscode/
+.idea/
+*.swp
+.DS_Store

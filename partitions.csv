@@ -1,0 +1,31 @@
+# ==========================================================================
+# PocketDNS partition table  (target: 4 MB flash ESP32 DevKit V1)
+#
+# This file is the MAP of the chip's flash memory. The bootloader reads it
+# to know where everything lives. We design it ONCE, now, OTA-ready, so we
+# never have to repartition later (repartitioning erases the whole chip).
+#
+# Columns:  Name, Type, SubType, Offset, Size, Flags
+#
+# Notes:
+#  - App partitions MUST start on a 0x10000 (64 KB) boundary.
+#  - We reserve TWO app slots (ota_0 / ota_1) so a future OTA update can be
+#    written to the inactive slot and swapped atomically. If it bricks, the
+#    bootloader rolls back. That safety needs the second slot to exist now.
+#  - The data partition is labelled "littlefs" but uses subtype "spiffs".
+#    Why: the LittleFS component matches the partition by its LABEL, not its
+#    subtype, and "spiffs" is a subtype every ESP-IDF version accepts. This
+#    avoids a build error on toolchains that don't know a "littlefs" subtype.
+#  - "coredump" is reserved now (64 KB) so that when we enable crash dumps in
+#    the debugging phase, the space already exists. Left unused for Phase 1.
+#
+# 4 MB = 0x400000. Every byte below is accounted for, ending exactly at 0x400000.
+# ==========================================================================
+# Name,     Type, SubType,  Offset,   Size,     Flags
+nvs,        data, nvs,      0x9000,   0x6000,
+otadata,    data, ota,      0xf000,   0x2000,
+phy_init,   data, phy,      0x11000,  0x1000,
+ota_0,      app,  ota_0,    0x20000,  0x180000,
+ota_1,      app,  ota_1,    0x1A0000, 0x180000,
+littlefs,   data, spiffs,   0x320000, 0xD0000,
+coredump,   data, coredump, 0x3F0000, 0x10000,

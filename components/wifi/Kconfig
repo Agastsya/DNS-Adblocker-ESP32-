@@ -1,0 +1,24 @@
+menu "PocketDNS Configuration"
+
+    config POCKETDNS_WIFI_SSID
+        string "Wi-Fi SSID"
+        default ""
+        help
+            Name of the Wi-Fi network PocketDNS should join.
+
+    config POCKETDNS_WIFI_PASSWORD
+        string "Wi-Fi Password"
+        default ""
+        help
+            WPA2 passphrase for the network above. This is stored in
+            sdkconfig, which is gitignored - fine for a personal device,
+            don't commit it if you ever drop that rule.
+
+    config POCKETDNS_WIFI_MAXIMUM_RETRY
+        int "Maximum connection retry attempts"
+        default 5
+        help
+            How many times to retry connecting before giving up and
+            continuing to boot without Wi-Fi.
+
+endmenu

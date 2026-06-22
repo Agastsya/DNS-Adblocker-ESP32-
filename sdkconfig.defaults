@@ -1,0 +1,33 @@
+# ==========================================================================
+# PocketDNS - default build configuration
+#
+# sdkconfig.defaults is applied when the build system first generates your
+# sdkconfig. It lets us ship sane, reproducible defaults in git instead of
+# forcing every cloner to fiddle with `idf.py menuconfig`.
+#
+# (sdkconfig itself is machine-generated and should be gitignored.)
+# ==========================================================================
+
+# --- Target chip -----------------------------------------------------------
+# Also run `idf.py set-target esp32` once; this line keeps it consistent.
+CONFIG_IDF_TARGET="esp32"
+
+# --- Flash size: DevKit V1 is almost always 4 MB --------------------------
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="4MB"
+
+# --- Use our custom partition map (partitions.csv) ------------------------
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# --- Flash + UART safety ---------------------------------------------------
+# The LittleFS port warns: when UART logging and flash access happen at the
+# same time, the UART ISR must live in IRAM or you can get rare corruption.
+# Cheap insurance, enable it now.
+CONFIG_UART_ISR_IN_IRAM=y
+
+# --- Logging ---------------------------------------------------------------
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+
+# --- FreeRTOS: give app_main room to grow as we add modules ----------------
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192

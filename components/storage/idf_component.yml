@@ -1,0 +1,11 @@
+# ==========================================================================
+# Why LittleFS (joltwallet/littlefs) and not the built-in SPIFFS?
+#   - Power-loss resilient: survives a yank-the-USB mid-write (SPIFFS can
+#     corrupt). Critical for an always-on appliance.
+#   - Real directories + far faster small-file deletes/rewrites, which is
+#     exactly our workload (statistics.json rewritten constantly).
+#   - Proper wear leveling, so flash lasts longer under frequent writes.
+# ==========================================================================
+dependencies:
+  idf: ">=5.5"
+  joltwallet/littlefs: "^1.22.1"
