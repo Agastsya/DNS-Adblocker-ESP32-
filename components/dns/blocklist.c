@@ -43,6 +43,16 @@ static const char *s_blocklist[] = {
 static char s_whitelist[WHITELIST_MAX][WHITELIST_MAX_DOMAIN];
 static size_t s_whitelist_count = 0;
 
+/* User-managed manual blocklist: domains the user explicitly blocks via
+ * the dashboard, on top of the cloud list. Same fixed-table design as the
+ * whitelist above; persisted separately. */
+#define MANUALBLOCK_MAX         64
+#define MANUALBLOCK_MAX_DOMAIN  128
+#define MANUALBLOCK_PATH        "/littlefs/manualblock.json"
+
+static char s_manualblock[MANUALBLOCK_MAX][MANUALBLOCK_MAX_DOMAIN];
+static size_t s_manualblock_count = 0;
+
 /* --------------------------------------------------------------------------
  * Cloud blocklist sync: periodically fetch a plain domain-per-line list
  * and use it instead of the small built-in seed list above. Firebog's
@@ -376,9 +386,117 @@ char *blocklist_whitelist_to_json(void)
     return json;
 }
 
+/* --------------------------------------------------------------------------
+ * User manual blocklist (domains the user blocks via the dashboard).
+ * ------------------------------------------------------------------------ */
+static void manualblock_save(void)
+{
+    cJSON *arr = cJSON_CreateArray();
+    if (arr == NULL) {
+        return;
+    }
+    for (size_t i = 0; i < s_manualblock_count; i++) {
+        cJSON_AddItemToArray(arr, cJSON_CreateString(s_manualblock[i]));
+    }
+    char *json = cJSON_PrintUnformatted(arr);
+    if (json != NULL) {
+        FILE *f = fopen(MANUALBLOCK_PATH, "w");
+        if (f != NULL) {
+            fputs(json, f);
+            fclose(f);
+        }
+        cJSON_free(json);
+    }
+    cJSON_Delete(arr);
+}
+
+static void manualblock_load(void)
+{
+    s_manualblock_count = 0;
+
+    FILE *f = fopen(MANUALBLOCK_PATH, "r");
+    if (f == NULL) {
+        return;
+    }
+    const size_t buf_sz = MANUALBLOCK_MAX * MANUALBLOCK_MAX_DOMAIN;
+    char *buf = malloc(buf_sz);   /* heap, not stack - see whitelist_load() */
+    if (buf == NULL) {
+        fclose(f);
+        return;
+    }
+    size_t n = fread(buf, 1, buf_sz - 1, f);
+    fclose(f);
+    buf[n] = '\0';
+
+    cJSON *arr = cJSON_Parse(buf);
+    free(buf);
+    if (arr == NULL || !cJSON_IsArray(arr)) {
+        cJSON_Delete(arr);
+        return;
+    }
+    int count = cJSON_GetArraySize(arr);
+    for (int i = 0; i < count && s_manualblock_count < MANUALBLOCK_MAX; i++) {
+        cJSON *item = cJSON_GetArrayItem(arr, i);
+        if (cJSON_IsString(item) && strlen(item->valuestring) < MANUALBLOCK_MAX_DOMAIN) {
+            strcpy(s_manualblock[s_manualblock_count++], item->valuestring);
+        }
+    }
+    cJSON_Delete(arr);
+}
+
+bool blocklist_manual_add(const char *domain)
+{
+    if (domain == NULL || domain[0] == '\0' || strlen(domain) >= MANUALBLOCK_MAX_DOMAIN) {
+        return false;
+    }
+    for (size_t i = 0; i < s_manualblock_count; i++) {
+        if (strcasecmp(s_manualblock[i], domain) == 0) {
+            return true;  /* already present - idempotent */
+        }
+    }
+    if (s_manualblock_count >= MANUALBLOCK_MAX) {
+        return false;
+    }
+    strcpy(s_manualblock[s_manualblock_count++], domain);
+    manualblock_save();
+    ESP_LOGI(TAG, "Manually blocked %s (%u total)", domain, (unsigned)s_manualblock_count);
+    return true;
+}
+
+bool blocklist_manual_remove(const char *domain)
+{
+    for (size_t i = 0; i < s_manualblock_count; i++) {
+        if (strcasecmp(s_manualblock[i], domain) == 0) {
+            if (i != s_manualblock_count - 1) {
+                strcpy(s_manualblock[i], s_manualblock[s_manualblock_count - 1]);
+            }
+            s_manualblock_count--;
+            manualblock_save();
+            ESP_LOGI(TAG, "Un-blocked %s (%u total)", domain, (unsigned)s_manualblock_count);
+            return true;
+        }
+    }
+    return false;
+}
+
+char *blocklist_manual_to_json(void)
+{
+    cJSON *arr = cJSON_CreateArray();
+    if (arr == NULL) {
+        return NULL;
+    }
+    for (size_t i = 0; i < s_manualblock_count; i++) {
+        cJSON_AddItemToArray(arr, cJSON_CreateString(s_manualblock[i]));
+    }
+    char *json = cJSON_PrintUnformatted(arr);
+    cJSON_Delete(arr);
+    return json;
+}
+
 esp_err_t blocklist_init(void)
 {
     whitelist_load();
+    manualblock_load();
 
     if (load_dynamic_list()) {
         ESP_LOGI(TAG, "Using previously synced cloud blocklist (%u domains)",
@@ -387,15 +505,24 @@ esp_err_t blocklist_init(void)
         ESP_LOGI(TAG, "No cloud blocklist yet - using %u built-in seed entries",
                  (unsigned)BLOCKLIST_COUNT);
     }
-    ESP_LOGI(TAG, "%u whitelist entries loaded", (unsigned)s_whitelist_count);
+    ESP_LOGI(TAG, "%u whitelist, %u manual-block entries loaded",
+             (unsigned)s_whitelist_count, (unsigned)s_manualblock_count);
     return ESP_OK;
 }
 
 bool blocklist_is_blocked(const char *domain)
 {
+    /* Whitelist wins over everything. */
     for (size_t i = 0; i < s_whitelist_count; i++) {
         if (domain_matches(domain, s_whitelist[i])) {
             return false;
+        }
+    }
+
+    /* User's manual blocks, checked before the cloud/seed list. */
+    for (size_t i = 0; i < s_manualblock_count; i++) {
+        if (domain_matches(domain, s_manualblock[i])) {
+            return true;
         }
     }
 

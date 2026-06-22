@@ -22,3 +22,10 @@ void blocklist_start_cloud_sync(void);
 bool blocklist_whitelist_add(const char *domain);
 bool blocklist_whitelist_remove(const char *domain);
 char *blocklist_whitelist_to_json(void);
+
+/* User manual blocklist - domains the user blocks via the dashboard, on
+ * top of the cloud list (whitelist still overrides). Same semantics as
+ * the whitelist helpers above. */
+bool blocklist_manual_add(const char *domain);
+bool blocklist_manual_remove(const char *domain);
+char *blocklist_manual_to_json(void);

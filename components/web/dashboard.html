@@ -6,303 +6,206 @@
 <title>PocketDNS</title>
 <style>
   :root {
-    color-scheme: dark;
+    --bg: #f5f5f7;
+    --surface: #ffffff;
+    --text: #1d1d1f;
+    --secondary: #6e6e73;
+    --tertiary: #a1a1a6;
+    --line: #e3e3e6;
+    --accent: #0071e3;
+    --danger: #d70015;
+    --ok: #1d8a4e;
   }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
   body {
-    background: #121212;
-    color: #e0e0e0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     margin: 0;
-    padding: 2rem;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.47;
   }
-  h1 {
-    font-weight: 600;
-    margin-bottom: 0.25rem;
+  .wrap { max-width: 720px; margin: 0 auto; padding: 3.5rem 1.4rem 5rem; }
+
+  header { margin-bottom: 3rem; }
+  header .eyebrow { font-size: 0.8rem; color: var(--accent); font-weight: 600; letter-spacing: 0.01em; }
+  header h1 { font-size: 2.6rem; font-weight: 600; letter-spacing: -0.03em; margin: 0.25rem 0 0.3rem; }
+  header .state { font-size: 1.05rem; color: var(--secondary); }
+  header .state b { color: var(--text); font-weight: 600; }
+
+  .figures { display: flex; flex-wrap: wrap; gap: 2.6rem; margin: 2.4rem 0 3.2rem; }
+  .figure .n { font-size: 2.3rem; font-weight: 600; letter-spacing: -0.02em; }
+  .figure .l { font-size: 0.9rem; color: var(--secondary); margin-top: 0.1rem; }
+  .figure.block .n { color: var(--danger); }
+
+  section { border-top: 1px solid var(--line); padding: 2.3rem 0 0.6rem; }
+  section h2 { font-size: 1.4rem; font-weight: 600; letter-spacing: -0.02em; margin: 0 0 0.3rem; }
+  section .note { color: var(--secondary); font-size: 0.95rem; margin: 0 0 1.4rem; max-width: 46ch; }
+
+  .field { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; }
+  input[type=text], input[type=time] {
+    flex: 1 1 200px; min-width: 0;
+    font: inherit; font-size: 1rem;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 0.75rem 0.95rem;
+    color: var(--text);
+    transition: border-color .15s, box-shadow .15s;
   }
-  .subtitle {
-    color: #888;
-    margin-bottom: 2rem;
-  }
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap: 1rem;
-    max-width: 900px;
-  }
-  .card {
-    background: #1e1e1e;
-    border: 1px solid #2a2a2a;
-    border-radius: 10px;
-    padding: 1.25rem;
-  }
-  .card .label {
-    color: #888;
-    font-size: 0.85rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-  }
-  .card .value {
-    font-size: 2rem;
-    font-weight: 700;
-    margin-top: 0.4rem;
-  }
-  .card.blocked .value { color: #ff6b6b; }
-  .card.cache .value { color: #4dabf7; }
-  .card.forwarded .value { color: #69db7c; }
-  .card.failures .value { color: #ffa94d; }
-  #updated {
-    color: #555;
-    font-size: 0.8rem;
-    margin-top: 2rem;
-  }
-  .section {
-    max-width: 900px;
-    margin-top: 2.5rem;
-  }
-  .section h2 {
-    font-size: 1.1rem;
-    font-weight: 600;
-    margin-bottom: 0.75rem;
-  }
-  .section .hint {
-    color: #888;
-    font-size: 0.85rem;
-    margin-bottom: 1rem;
-  }
-  .wl-row {
-    display: flex;
-    gap: 0.5rem;
-    margin-bottom: 1rem;
-  }
-  input[type="text"] {
-    flex: 1;
-    background: #1e1e1e;
-    border: 1px solid #2a2a2a;
-    border-radius: 8px;
-    color: #e0e0e0;
-    padding: 0.6rem 0.8rem;
-    font-size: 0.95rem;
-  }
+  input[type=time] { flex: 0 0 auto; }
+  input::placeholder { color: var(--tertiary); }
+  input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 4px rgba(0,113,227,0.12); }
+
   button {
-    background: #4dabf7;
-    color: #06121f;
-    border: none;
-    border-radius: 8px;
-    padding: 0.6rem 1.1rem;
-    font-weight: 600;
-    cursor: pointer;
+    font: inherit; font-size: 1rem; font-weight: 500;
+    border: none; border-radius: 980px;
+    padding: 0.72rem 1.4rem;
+    background: var(--accent); color: #fff;
+    cursor: pointer; transition: opacity .15s;
+    white-space: nowrap;
   }
-  button:hover { background: #74c0fc; }
-  ul.wl-list { list-style: none; padding: 0; margin: 0; }
-  ul.wl-list li {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background: #1e1e1e;
-    border: 1px solid #2a2a2a;
-    border-radius: 8px;
-    padding: 0.6rem 0.9rem;
-    margin-bottom: 0.5rem;
+  button:hover { opacity: 0.88; }
+
+  ul { list-style: none; padding: 0; margin: 1.4rem 0 0; }
+  li {
+    display: flex; align-items: center; gap: 1rem;
+    padding: 0.85rem 0.25rem;
+    border-bottom: 1px solid var(--line);
   }
-  ul.wl-list .remove {
-    background: none;
-    color: #ff6b6b;
-    padding: 0.2rem 0.5rem;
-    font-size: 0.85rem;
+  li:last-child { border-bottom: none; }
+  li .domain { font-size: 1rem; }
+  li .when { margin-left: auto; color: var(--secondary); font-size: 0.9rem; font-variant-numeric: tabular-nums; }
+  li .x {
+    margin-left: auto;
+    background: none; color: var(--accent); padding: 0.2rem 0.3rem;
+    border-radius: 0; font-size: 0.92rem; font-weight: 400;
   }
-  ul.wl-list .remove:hover { color: #ff8787; background: none; }
-  .wl-empty { color: #555; font-size: 0.9rem; }
+  li .when + .x { margin-left: 0; }
+  li .x:hover { opacity: 1; text-decoration: underline; }
+  .none { color: var(--tertiary); font-size: 0.95rem; padding: 0.6rem 0.25rem; }
+  footer { margin-top: 3rem; color: var(--tertiary); font-size: 0.82rem; }
 </style>
 </head>
 <body>
-  <h1>PocketDNS</h1>
-  <div class="subtitle">DNS filtering appliance - live stats</div>
+  <div class="wrap">
+    <header>
+      <div class="eyebrow">PocketDNS</div>
+      <h1>Overview</h1>
+      <div class="state" id="state">Connecting…</div>
+    </header>
 
-  <div class="grid">
-    <div class="card">
-      <div class="label">Total Queries</div>
-      <div class="value" id="total_queries">-</div>
+    <div class="figures">
+      <div class="figure"><div class="n" id="total_queries">–</div><div class="l">Queries</div></div>
+      <div class="figure block"><div class="n" id="blocked">–</div><div class="l" id="blocked_l">Blocked</div></div>
+      <div class="figure"><div class="n" id="cache_hits">–</div><div class="l">Served from cache</div></div>
+      <div class="figure"><div class="n" id="forwarded">–</div><div class="l">Forwarded</div></div>
     </div>
-    <div class="card blocked">
-      <div class="label">Blocked</div>
-      <div class="value" id="blocked">-</div>
-    </div>
-    <div class="card cache">
-      <div class="label">Cache Hits</div>
-      <div class="value" id="cache_hits">-</div>
-    </div>
-    <div class="card forwarded">
-      <div class="label">Forwarded</div>
-      <div class="value" id="forwarded">-</div>
-    </div>
-    <div class="card failures">
-      <div class="label">Forward Failures</div>
-      <div class="value" id="forward_failures">-</div>
-    </div>
-  </div>
 
-  <div id="updated">Loading...</div>
+    <section>
+      <h2>Block a website</h2>
+      <p class="note">Add any domain to block it on every device using PocketDNS. Subdomains are included.</p>
+      <div class="field">
+        <input type="text" id="bl-input" placeholder="facebook.com" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <button id="bl-add">Block</button>
+      </div>
+      <ul id="bl-list"></ul>
+    </section>
 
-  <div class="section">
-    <h2>Whitelist</h2>
-    <div class="hint">Domains here are never blocked, even if the cloud blocklist contains them.</div>
-    <div class="wl-row">
-      <input type="text" id="wl-input" placeholder="example.com" autocomplete="off">
-      <button id="wl-add">Add</button>
-    </div>
-    <ul class="wl-list" id="wl-list"></ul>
-  </div>
+    <section>
+      <h2>Allowed</h2>
+      <p class="note">Domains here are never blocked, even if a blocklist contains them.</p>
+      <div class="field">
+        <input type="text" id="wl-input" placeholder="example.com" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <button id="wl-add">Allow</button>
+      </div>
+      <ul id="wl-list"></ul>
+    </section>
 
-  <div class="section">
-    <h2>Parental Controls</h2>
-    <div class="hint">Block a domain during a daily time window (local time). Overnight windows like 21:00&ndash;07:00 are allowed.</div>
-    <div class="wl-row">
-      <input type="text" id="sc-domain" placeholder="youtube.com" autocomplete="off">
-      <input type="time" id="sc-start" value="21:00">
-      <input type="time" id="sc-end" value="07:00">
-      <button id="sc-add">Add</button>
-    </div>
-    <ul class="wl-list" id="sc-list"></ul>
+    <section>
+      <h2>Schedules</h2>
+      <p class="note">Block a domain during a daily time window, in local time. Overnight ranges work too.</p>
+      <div class="field">
+        <input type="text" id="sc-domain" placeholder="youtube.com" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <input type="time" id="sc-start" value="21:00">
+        <input type="time" id="sc-end" value="07:00">
+        <button id="sc-add">Add</button>
+      </div>
+      <ul id="sc-list"></ul>
+    </section>
+
+    <footer id="updated">Loading…</footer>
   </div>
 
   <script>
+    const $ = (id) => document.getElementById(id);
+    const fmt = (n) => n.toLocaleString();
+
     async function refresh() {
       try {
-        const res = await fetch('/api/stats');
-        const data = await res.json();
-        for (const key of ['total_queries', 'blocked', 'cache_hits', 'forwarded', 'forward_failures']) {
-          document.getElementById(key).textContent = data[key];
-        }
-        document.getElementById('updated').textContent =
-          'Updated ' + new Date().toLocaleTimeString();
+        const d = await (await fetch('/api/stats')).json();
+        $('total_queries').textContent = fmt(d.total_queries);
+        $('blocked').textContent = fmt(d.blocked);
+        $('cache_hits').textContent = fmt(d.cache_hits);
+        $('forwarded').textContent = fmt(d.forwarded);
+        const pct = d.total_queries ? Math.round(d.blocked / d.total_queries * 100) : 0;
+        $('blocked_l').textContent = 'Blocked · ' + pct + '%';
+        $('state').innerHTML = 'Online · <b>' + fmt(d.blocked) + '</b> requests blocked';
+        $('updated').textContent = 'Updated ' + new Date().toLocaleTimeString();
       } catch (e) {
-        document.getElementById('updated').textContent = 'Could not reach device';
+        $('state').textContent = 'Offline — could not reach device';
       }
     }
 
-    function renderWhitelist(domains) {
-      const list = document.getElementById('wl-list');
-      list.innerHTML = '';
-      if (!domains.length) {
+    function renderDomains(elId, items, onRemove, empty) {
+      const ul = $(elId); ul.innerHTML = '';
+      if (!items.length) { const li = document.createElement('li'); li.className = 'none'; li.textContent = empty; ul.appendChild(li); return; }
+      for (const d of items) {
         const li = document.createElement('li');
-        li.className = 'wl-empty';
-        li.textContent = 'No whitelisted domains yet.';
-        list.appendChild(li);
-        return;
-      }
-      for (const d of domains) {
-        const li = document.createElement('li');
-        const span = document.createElement('span');
-        span.textContent = d;
-        const btn = document.createElement('button');
-        btn.className = 'remove';
-        btn.textContent = 'Remove';
-        btn.onclick = () => mutateWhitelist(d, 'remove');
-        li.appendChild(span);
-        li.appendChild(btn);
-        list.appendChild(li);
+        const s = document.createElement('span'); s.className = 'domain'; s.textContent = d;
+        const x = document.createElement('button'); x.className = 'x'; x.textContent = 'Remove'; x.onclick = () => onRemove(d);
+        li.append(s, x); ul.appendChild(li);
       }
     }
 
-    async function loadWhitelist() {
-      try {
-        const res = await fetch('/api/whitelist');
-        renderWhitelist(await res.json());
-      } catch (e) { /* ignore */ }
+    async function getList(url, elId, onRemove, empty) {
+      try { renderDomains(elId, await (await fetch(url)).json(), onRemove, empty); } catch (e) {}
+    }
+    async function post(url, payload, then) {
+      try { const r = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) }); if (r.ok && then) then(await r.json()); } catch (e) {}
     }
 
-    async function mutateWhitelist(domain, action) {
-      try {
-        const res = await fetch('/api/whitelist', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ domain, action }),
-        });
-        if (res.ok) {
-          renderWhitelist(await res.json());
-        }
-      } catch (e) { /* ignore */ }
-    }
+    // Block list
+    const blRm = (d) => post('/api/blocklist', {domain:d, action:'remove'}, (i)=>renderDomains('bl-list', i, blRm, 'Nothing blocked yet.'));
+    $('bl-add').onclick = () => { const v = $('bl-input').value.trim(); if (v) { post('/api/blocklist', {domain:v, action:'add'}, (i)=>renderDomains('bl-list', i, blRm, 'Nothing blocked yet.')); $('bl-input').value=''; } };
+    $('bl-input').addEventListener('keydown', e => { if (e.key==='Enter') $('bl-add').click(); });
 
-    document.getElementById('wl-add').onclick = () => {
-      const input = document.getElementById('wl-input');
-      const domain = input.value.trim();
-      if (domain) {
-        mutateWhitelist(domain, 'add');
-        input.value = '';
-      }
-    };
-    document.getElementById('wl-input').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') document.getElementById('wl-add').click();
-    });
+    // Allow list
+    const wlRm = (d) => post('/api/whitelist', {domain:d, action:'remove'}, (i)=>renderDomains('wl-list', i, wlRm, 'Nothing allowed yet.'));
+    $('wl-add').onclick = () => { const v = $('wl-input').value.trim(); if (v) { post('/api/whitelist', {domain:v, action:'add'}, (i)=>renderDomains('wl-list', i, wlRm, 'Nothing allowed yet.')); $('wl-input').value=''; } };
+    $('wl-input').addEventListener('keydown', e => { if (e.key==='Enter') $('wl-add').click(); });
 
-    // --- Parental control schedules ---
-    function minToHHMM(m) {
-      const h = Math.floor(m / 60), mm = m % 60;
-      return String(h).padStart(2, '0') + ':' + String(mm).padStart(2, '0');
-    }
-    function hhmmToMin(s) {
-      const [h, m] = s.split(':').map(Number);
-      return h * 60 + m;
-    }
-
+    // Schedules
+    const toHM = (m) => String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
+    const toMin = (s) => { const [h,m]=s.split(':').map(Number); return h*60+m; };
     function renderSchedules(items) {
-      const list = document.getElementById('sc-list');
-      list.innerHTML = '';
-      if (!items.length) {
-        const li = document.createElement('li');
-        li.className = 'wl-empty';
-        li.textContent = 'No schedules yet.';
-        list.appendChild(li);
-        return;
-      }
+      const ul = $('sc-list'); ul.innerHTML = '';
+      if (!items.length) { const li=document.createElement('li'); li.className='none'; li.textContent='No schedules yet.'; ul.appendChild(li); return; }
       for (const s of items) {
         const li = document.createElement('li');
-        const span = document.createElement('span');
-        span.textContent = `${s.domain}  —  ${minToHHMM(s.start)} to ${minToHHMM(s.end)}`;
-        const btn = document.createElement('button');
-        btn.className = 'remove';
-        btn.textContent = 'Remove';
-        btn.onclick = () => mutateSchedule({ domain: s.domain, action: 'remove' });
-        li.appendChild(span);
-        li.appendChild(btn);
-        list.appendChild(li);
+        const d = document.createElement('span'); d.className='domain'; d.textContent=s.domain;
+        const w = document.createElement('span'); w.className='when'; w.textContent=toHM(s.start)+' – '+toHM(s.end);
+        const x = document.createElement('button'); x.className='x'; x.textContent='Remove'; x.onclick=()=>post('/api/schedules', {domain:s.domain, action:'remove'}, renderSchedules);
+        li.append(d, w, x); ul.appendChild(li);
       }
     }
-
-    async function loadSchedules() {
-      try {
-        const res = await fetch('/api/schedules');
-        renderSchedules(await res.json());
-      } catch (e) { /* ignore */ }
-    }
-
-    async function mutateSchedule(payload) {
-      try {
-        const res = await fetch('/api/schedules', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-        if (res.ok) {
-          renderSchedules(await res.json());
-        }
-      } catch (e) { /* ignore */ }
-    }
-
-    document.getElementById('sc-add').onclick = () => {
-      const domain = document.getElementById('sc-domain').value.trim();
-      const start = document.getElementById('sc-start').value;
-      const end = document.getElementById('sc-end').value;
-      if (domain && start && end) {
-        mutateSchedule({ domain, start: hhmmToMin(start), end: hhmmToMin(end) });
-        document.getElementById('sc-domain').value = '';
-      }
-    };
+    $('sc-add').onclick = () => { const d=$('sc-domain').value.trim(), a=$('sc-start').value, b=$('sc-end').value; if (d&&a&&b) { post('/api/schedules', {domain:d, start:toMin(a), end:toMin(b)}, renderSchedules); $('sc-domain').value=''; } };
 
     refresh();
-    loadWhitelist();
-    loadSchedules();
+    getList('/api/blocklist', 'bl-list', blRm, 'Nothing blocked yet.');
+    getList('/api/whitelist', 'wl-list', wlRm, 'Nothing allowed yet.');
+    fetch('/api/schedules').then(r=>r.json()).then(renderSchedules).catch(()=>{});
     setInterval(refresh, 2000);
   </script>
 </body>

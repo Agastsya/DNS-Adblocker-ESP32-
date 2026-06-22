@@ -156,6 +156,71 @@ static esp_err_t api_whitelist_post_handler(httpd_req_t *req)
     return err;
 }
 
+static esp_err_t api_blocklist_get_handler(httpd_req_t *req)
+{
+    if (!check_auth(req)) {
+        return ESP_OK;
+    }
+    char *json = blocklist_manual_to_json();
+    if (json == NULL) {
+        httpd_resp_send_500(req);
+        return ESP_FAIL;
+    }
+    httpd_resp_set_type(req, "application/json");
+    esp_err_t err = httpd_resp_send(req, json, HTTPD_RESP_USE_STRLEN);
+    cJSON_free(json);
+    return err;
+}
+
+/* POST /api/blocklist with body {"domain":"x.com","action":"add"|"remove"} */
+static esp_err_t api_blocklist_post_handler(httpd_req_t *req)
+{
+    if (!check_auth(req)) {
+        return ESP_OK;
+    }
+
+    char body[160];
+    int total = req->content_len;
+    if (total <= 0 || total >= (int)sizeof(body)) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Bad request body");
+        return ESP_FAIL;
+    }
+    int received = httpd_req_recv(req, body, total);
+    if (received <= 0) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Could not read body");
+        return ESP_FAIL;
+    }
+    body[received] = '\0';
+
+    cJSON *root = cJSON_Parse(body);
+    cJSON *domain = root ? cJSON_GetObjectItem(root, "domain") : NULL;
+    cJSON *action = root ? cJSON_GetObjectItem(root, "action") : NULL;
+    if (!cJSON_IsString(domain) || !cJSON_IsString(action)) {
+        cJSON_Delete(root);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Need string domain + action");
+        return ESP_FAIL;
+    }
+
+    bool ok;
+    if (strcmp(action->valuestring, "remove") == 0) {
+        ok = blocklist_manual_remove(domain->valuestring);
+    } else {
+        ok = blocklist_manual_add(domain->valuestring);
+    }
+    cJSON_Delete(root);
+
+    if (!ok) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Operation failed (full, or domain not found)");
+        return ESP_FAIL;
+    }
+
+    char *json = blocklist_manual_to_json();
+    httpd_resp_set_type(req, "application/json");
+    esp_err_t err = httpd_resp_send(req, json ? json : "[]", HTTPD_RESP_USE_STRLEN);
+    cJSON_free(json);
+    return err;
+}
+
 static esp_err_t api_schedules_get_handler(httpd_req_t *req)
 {
     if (!check_auth(req)) {
@@ -272,6 +337,20 @@ void web_server_start(void)
         .handler = api_whitelist_post_handler,
     };
     httpd_register_uri_handler(server, &whitelist_post_uri);
+
+    httpd_uri_t blocklist_get_uri = {
+        .uri = "/api/blocklist",
+        .method = HTTP_GET,
+        .handler = api_blocklist_get_handler,
+    };
+    httpd_register_uri_handler(server, &blocklist_get_uri);
+
+    httpd_uri_t blocklist_post_uri = {
+        .uri = "/api/blocklist",
+        .method = HTTP_POST,
+        .handler = api_blocklist_post_handler,
+    };
+    httpd_register_uri_handler(server, &blocklist_post_uri);
 
     httpd_uri_t schedules_get_uri = {
         .uri = "/api/schedules",
