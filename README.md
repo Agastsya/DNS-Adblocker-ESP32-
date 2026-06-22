@@ -19,9 +19,10 @@ phone, and over-the-air updates.
 
 - [What DNS blocking can and can't do](#-read-this-first-what-dns-blocking-can-and-cant-do)
 - [Features](#features)
+- [⚡ Quick install — flash from your browser](#-quick-install--flash-from-your-browser)
 - [Compatibility — which ESP32 boards work](#compatibility--which-esp32-boards-work)
 - [What you need](#what-you-need)
-- **Installation guide**
+- **Build from source (developers)**
   - [1. Install the ESP-IDF toolchain](#1-install-the-esp-idf-toolchain)
   - [2. Install the USB driver (if needed)](#2-install-the-usb-driver-if-needed)
   - [3. Download PocketDNS](#3-download-pocketdns)
@@ -86,6 +87,48 @@ extension or a patched app — not any DNS tool.
 
 ---
 
+## ⚡ Quick install — flash from your browser
+
+**The easy way — no software, no command line.** Just open the flasher page in
+a desktop browser, plug in your ESP32, and click install:
+
+### 👉 **[Open the PocketDNS Web Flasher](https://agastsya.github.io/DNS-Adblocker-ESP32-/)**
+
+That's the whole setup:
+
+1. **Plug your ESP32** into your computer with a USB data cable.
+2. **Open the flasher** (link above) in **Chrome, Edge, or Opera on a
+   desktop/laptop** — these support flashing over USB (Web Serial). Safari,
+   Firefox, and phones can't flash; use one of those browsers.
+3. Click **Install**, pick your board's port, and wait ~1 minute.
+4. The board starts a Wi-Fi hotspot called **`PocketDNS-Setup`** — connect your
+   phone to it and enter your home Wi-Fi on the page that appears.
+5. Done. Find the board's IP in your router, point your devices' DNS at it, and
+   open `http://<that-ip>/` for the dashboard. See [Using it](#using-it).
+
+No ESP-IDF, no terminal. Prefer building it yourself? See
+[Build from source](#1-install-the-esp-idf-toolchain) below.
+
+<details>
+<summary><b>Repo owner: one-time setup to make the web flasher live</b></summary>
+
+The flasher is built and published automatically by GitHub Actions
+([`.github/workflows/deploy-flasher.yml`](.github/workflows/deploy-flasher.yml)).
+To turn it on once:
+
+1. Push this repo to GitHub.
+2. Go to **Settings → Pages** and set **Source** to **GitHub Actions**.
+3. Push to `main` (or run the workflow manually under the **Actions** tab).
+
+GitHub then compiles the firmware in the cloud and serves the flasher at
+`https://<your-username>.github.io/<your-repo>/`. It rebuilds on every push, so
+the downloadable firmware always matches your latest code. The published binary
+ships with **blank Wi-Fi**, so every user who flashes it gets the captive-portal
+setup — no secrets are baked into the public build.
+</details>
+
+---
+
 ## Compatibility — which ESP32 boards work
 
 PocketDNS needs three things from a board: **Wi-Fi**, **at least 4 MB of
@@ -140,10 +183,14 @@ a driver — see [step 2](#2-install-the-usb-driver-if-needed).
 - Your **home Wi-Fi name and password** (2.4 GHz — ESP32 doesn't do 5 GHz).
 - ~1 GB free disk space for the toolchain.
 
-> **First time?** The steps below take ~30–45 minutes, most of it the one-time
-> ESP-IDF install. Follow them top to bottom.
-
 ---
+
+# Build from source (developers)
+
+> Most people should use the **[browser flasher](#-quick-install--flash-from-your-browser)**
+> above — it needs none of this. Build from source if you want to change the
+> code, use a non-ESP32 chip, or bake your Wi-Fi into the firmware. The steps
+> below take ~30–45 minutes, most of it the one-time ESP-IDF install.
 
 ## 1. Install the ESP-IDF toolchain
 

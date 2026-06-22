@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flash PocketDNS</title>
+<meta name="description" content="Install PocketDNS on your ESP32 right from your browser — no software, no command line.">
+<style>
+  :root { --bg:#f5f5f7; --surface:#fff; --text:#1d1d1f; --secondary:#6e6e73; --line:#e6e6ea; --accent:#0071e3; --ok:#1d8a4e; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Helvetica,Arial,sans-serif;
+         -webkit-font-smoothing:antialiased; line-height:1.5; }
+  .wrap { max-width:640px; margin:0 auto; padding:3.5rem 1.4rem 5rem; }
+  header { display:flex; align-items:center; gap:0.9rem; margin-bottom:1.8rem; }
+  .mark { width:46px; height:46px; border-radius:13px; background:var(--accent); display:flex; align-items:center; justify-content:center; }
+  .mark svg { width:26px; height:26px; }
+  h1 { font-size:1.9rem; font-weight:600; letter-spacing:-0.03em; margin:0; }
+  .tag { color:var(--secondary); margin:0; }
+  .lead { font-size:1.08rem; color:var(--secondary); margin:0 0 2rem; }
+
+  .flash-card { background:var(--surface); border:1px solid var(--line); border-radius:18px; padding:2rem 1.6rem; text-align:center;
+                box-shadow:0 1px 3px rgba(0,0,0,0.06), 0 12px 32px rgba(0,0,0,0.05); margin-bottom:1.6rem; }
+  .flash-card .big { font-size:1.2rem; font-weight:600; margin:0 0 1.2rem; }
+  esp-web-install-button { --esp-tools-button-color:#fff; --esp-tools-button-background-color:var(--accent); }
+  esp-web-install-button[install-unsupported] { display:none; }
+  .unsupported { display:none; background:#fff4f4; border:1px solid #ffd2d2; color:#b3261e; border-radius:12px; padding:1rem 1.1rem; font-size:0.95rem; }
+  esp-web-install-button[install-unsupported] ~ .unsupported { display:block; }
+
+  ol.steps { counter-reset:s; list-style:none; padding:0; margin:2.4rem 0 0; }
+  ol.steps li { counter-increment:s; position:relative; padding:0 0 1.4rem 3rem; }
+  ol.steps li::before { content:counter(s); position:absolute; left:0; top:-2px; width:1.9rem; height:1.9rem; border-radius:50%;
+                        background:var(--accent); color:#fff; font-weight:600; display:flex; align-items:center; justify-content:center; font-size:0.95rem; }
+  ol.steps li b { display:block; font-weight:600; margin-bottom:0.15rem; }
+  ol.steps li span { color:var(--secondary); }
+  code { background:#ececf0; padding:0.1rem 0.4rem; border-radius:5px; font-size:0.92em; }
+  .hint { background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:1rem 1.15rem; margin-top:1.6rem; font-size:0.92rem; color:var(--secondary); }
+  footer { margin-top:2.6rem; color:#a1a1a6; font-size:0.84rem; text-align:center; }
+  a { color:var(--accent); text-decoration:none; } a:hover { text-decoration:underline; }
+</style>
+<script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="mark"><svg viewBox="0 0 24 24" fill="none"><path d="M12 2L4 5v6c0 5 3.5 8.5 8 11 4.5-2.5 8-6 8-11V5l-8-3z" fill="#fff"/><path d="M9 12l2 2 4-4" stroke="#0071e3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <div><h1>PocketDNS</h1><p class="tag">Network ad &amp; tracker blocker for ESP32</p></div>
+    </header>
+
+    <p class="lead">Install PocketDNS onto your ESP32 right here in your browser — no software to download, no command line. Plug the board into this computer with a USB cable and click the button.</p>
+
+    <div class="flash-card">
+      <p class="big">Ready to install</p>
+      <esp-web-install-button manifest="./manifest.json"></esp-web-install-button>
+      <div class="unsupported">
+        Your browser can't flash over USB. Please open this page in <b>Chrome</b>,
+        <b>Edge</b>, or <b>Opera</b> on a <b>desktop/laptop</b> (Web Serial isn't
+        available on Safari, Firefox, or phones).
+      </div>
+    </div>
+
+    <ol class="steps">
+      <li><b>Plug in your ESP32</b><span>Connect the board to this computer with a USB <em>data</em> cable (not a charge-only one).</span></li>
+      <li><b>Click “Connect” and install</b><span>Pick your board's serial port from the list, then let it flash. Takes about a minute. If it won't connect, hold the board's <b>BOOT</b> button while it starts.</span></li>
+      <li><b>Join the “PocketDNS-Setup” Wi-Fi</b><span>After flashing, the board creates its own Wi-Fi network. On your phone or laptop, connect to <code>PocketDNS-Setup</code>.</span></li>
+      <li><b>Enter your home Wi-Fi</b><span>A setup page opens automatically — type your home Wi-Fi name and password. The board saves it and restarts, joining your network.</span></li>
+      <li><b>Point your devices at it</b><span>Set your phone/laptop/router's DNS to the board's IP (shown on your router), then open <code>http://&lt;that-ip&gt;/</code> for the dashboard. Full instructions in the <a href="https://github.com/Agastsya/DNS-Adblocker-ESP32-#using-it">README</a>.</span></li>
+    </ol>
+
+    <div class="hint">
+      <b>Heads up:</b> PocketDNS blocks ad &amp; tracker <em>domains</em> network-wide
+      (like Pi-hole). It <b>cannot</b> block YouTube ads or ads served from a page's
+      own domain — no DNS-based blocker can. <a href="https://github.com/Agastsya/DNS-Adblocker-ESP32-#-read-this-first-what-dns-blocking-can-and-cant-do">Why?</a>
+    </div>
+
+    <footer>
+      Open source · <a href="https://github.com/Agastsya/DNS-Adblocker-ESP32-">GitHub</a> ·
+      Flashing powered by <a href="https://esphome.github.io/esp-web-tools/">ESP Web Tools</a>
+    </footer>
+  </div>
+</body>
+</html>

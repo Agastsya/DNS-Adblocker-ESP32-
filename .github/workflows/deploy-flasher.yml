@@ -1,0 +1,63 @@
+name: Build firmware & publish web flasher
+
+# Builds the firmware in the cloud and publishes a browser-based flasher to
+# GitHub Pages, so anyone can install PocketDNS from a webpage - no toolchain,
+# no command line. Runs on every push to main (and can be triggered manually).
+#
+# ONE-TIME SETUP (repo owner): in the repo's Settings -> Pages, set
+# "Source" to "GitHub Actions". After the first run, the flasher lives at:
+#   https://<your-username>.github.io/<your-repo>/
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Builds with sdkconfig.defaults, which ships with BLANK Wi-Fi - so the
+      # published binary always boots into the "PocketDNS-Setup" captive portal
+      # for the end user to enter their own Wi-Fi. (No secrets in the build.)
+      - name: Build firmware (ESP-IDF v5.5, ESP32)
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v5.5.4
+          target: esp32
+          path: '.'
+
+      - name: Assemble flasher site
+        run: |
+          mkdir -p site
+          cp web-flasher/index.html                     site/
+          cp web-flasher/manifest.json                  site/
+          cp build/bootloader/bootloader.bin            site/
+          cp build/partition_table/partition-table.bin  site/
+          cp build/ota_data_initial.bin                 site/
+          cp build/pocketdns.bin                        site/
+          touch site/.nojekyll
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
