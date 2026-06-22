@@ -54,6 +54,17 @@ static size_t s_whitelist_count = 0;
 static char s_manualblock[MANUALBLOCK_MAX][MANUALBLOCK_MAX_DOMAIN];
 static size_t s_manualblock_count = 0;
 
+/* User-uploaded custom blocklist: a bulk list the user pastes/imports via
+ * the dashboard (one domain per line). Stored as raw text on flash and
+ * loaded into a buffer + line-pointer array - bigger than the manual list
+ * but still small enough to keep in RAM. */
+#define CUSTOMBLOCK_PATH       "/littlefs/customblock.txt"
+#define CUSTOMBLOCK_MAX_BYTES  (48 * 1024)   /* ~2000 domains */
+
+static char  *s_custom_buf = NULL;
+static char **s_custom_entries = NULL;
+static size_t s_custom_count = 0;
+
 /* --------------------------------------------------------------------------
  * Cloud blocklist: a large domain list (tens of thousands of entries),
  * stored as 32-bit FNV-1a hashes in NUM_BUCKETS sorted buckets ON FLASH.
@@ -607,6 +618,120 @@ char *blocklist_manual_to_json(void)
     return json;
 }
 
+/* --------------------------------------------------------------------------
+ * User-uploaded custom blocklist (bulk paste/import).
+ * ------------------------------------------------------------------------ */
+
+/* Split the loaded buffer into line pointers, skipping blanks/comments and
+ * trimming CR. Mutates s_custom_buf in place. */
+static void custom_rebuild_index(void)
+{
+    free(s_custom_entries);
+    s_custom_entries = NULL;
+    s_custom_count = 0;
+    if (s_custom_buf == NULL) {
+        return;
+    }
+
+    size_t cap = 0;
+    for (char *p = s_custom_buf; *p; p++) {
+        if (*p == '\n') cap++;
+    }
+    cap += 1;
+    s_custom_entries = malloc(cap * sizeof(char *));
+    if (s_custom_entries == NULL) {
+        return;
+    }
+
+    char *p = s_custom_buf;
+    while (*p) {
+        char *eol = strchr(p, '\n');
+        if (eol) *eol = '\0';
+        size_t len = strlen(p);
+        if (len && p[len - 1] == '\r') p[len - 1] = '\0';
+        if (p[0] != '\0' && p[0] != '#' && s_custom_count < cap) {
+            s_custom_entries[s_custom_count++] = p;
+        }
+        if (!eol) break;
+        p = eol + 1;
+    }
+}
+
+static void custom_load(void)
+{
+    free(s_custom_buf);
+    s_custom_buf = NULL;
+    free(s_custom_entries);
+    s_custom_entries = NULL;
+    s_custom_count = 0;
+
+    FILE *f = fopen(CUSTOMBLOCK_PATH, "r");
+    if (f == NULL) {
+        return;
+    }
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (size <= 0 || size > CUSTOMBLOCK_MAX_BYTES) {
+        if (size > CUSTOMBLOCK_MAX_BYTES) ESP_LOGW(TAG, "Custom blocklist too big, ignoring");
+        fclose(f);
+        return;
+    }
+    s_custom_buf = malloc((size_t)size + 1);
+    if (s_custom_buf == NULL) {
+        fclose(f);
+        return;
+    }
+    size_t n = fread(s_custom_buf, 1, (size_t)size, f);
+    fclose(f);
+    s_custom_buf[n] = '\0';
+    custom_rebuild_index();
+    ESP_LOGI(TAG, "Custom blocklist: %u domains", (unsigned)s_custom_count);
+}
+
+bool blocklist_custom_set(const char *text)
+{
+    if (text == NULL) {
+        return false;
+    }
+    if (strlen(text) > CUSTOMBLOCK_MAX_BYTES) {
+        return false;
+    }
+    FILE *f = fopen(CUSTOMBLOCK_PATH, "w");
+    if (f == NULL) {
+        return false;
+    }
+    fputs(text, f);
+    fclose(f);
+    custom_load();
+    return true;
+}
+
+char *blocklist_custom_get_text(void)
+{
+    FILE *f = fopen(CUSTOMBLOCK_PATH, "r");
+    if (f == NULL) {
+        char *empty = malloc(1);
+        if (empty) empty[0] = '\0';
+        return empty;
+    }
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (size < 0 || size > CUSTOMBLOCK_MAX_BYTES) size = 0;
+    char *buf = malloc((size_t)size + 1);
+    if (buf == NULL) { fclose(f); return NULL; }
+    size_t n = fread(buf, 1, (size_t)size, f);
+    fclose(f);
+    buf[n] = '\0';
+    return buf;
+}
+
+size_t blocklist_custom_count(void)
+{
+    return s_custom_count;
+}
+
 esp_err_t blocklist_init(void)
 {
     if (s_idx_lock == NULL) {
@@ -620,6 +745,7 @@ esp_err_t blocklist_init(void)
 
     whitelist_load();
     manualblock_load();
+    custom_load();
 
     xSemaphoreTake(s_idx_lock, portMAX_DELAY);
     bool have_idx = index_load_locked();
@@ -628,8 +754,8 @@ esp_err_t blocklist_init(void)
         ESP_LOGI(TAG, "No cloud blocklist yet - using %u built-in seed entries until first sync",
                  (unsigned)BLOCKLIST_COUNT);
     }
-    ESP_LOGI(TAG, "%u whitelist, %u manual-block entries loaded",
-             (unsigned)s_whitelist_count, (unsigned)s_manualblock_count);
+    ESP_LOGI(TAG, "%u whitelist, %u manual-block, %u custom-block entries loaded",
+             (unsigned)s_whitelist_count, (unsigned)s_manualblock_count, (unsigned)s_custom_count);
     return ESP_OK;
 }
 
@@ -645,6 +771,13 @@ bool blocklist_is_blocked(const char *domain)
     /* User's manual blocks, checked before the cloud/seed list. */
     for (size_t i = 0; i < s_manualblock_count; i++) {
         if (domain_matches(domain, s_manualblock[i])) {
+            return true;
+        }
+    }
+
+    /* User's uploaded custom blocklist. */
+    for (size_t i = 0; i < s_custom_count; i++) {
+        if (domain_matches(domain, s_custom_entries[i])) {
             return true;
         }
     }

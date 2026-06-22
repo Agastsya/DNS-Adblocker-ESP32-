@@ -37,3 +37,6 @@ void dns_stats_log_summary(void);
  * encoding logic can be unit tested without a mounted filesystem. */
 char *dns_stats_to_json(const dns_stats_t *stats);   /* caller must cJSON_free() the result */
 bool dns_stats_from_json(const char *json, dns_stats_t *out);
+
+/* Rolling 24h query history for the dashboard graph (caller cJSON_free()s). */
+char *dns_stats_history_to_json(void);

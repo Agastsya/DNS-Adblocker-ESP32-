@@ -31,3 +31,20 @@ CONFIG_LOG_DEFAULT_LEVEL_INFO=y
 
 # --- FreeRTOS: give app_main room to grow as we add modules ----------------
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+
+# ==========================================================================
+#  >>> EDIT THESE TWO LINES with your home Wi-Fi, then build & flash. <<<
+#
+#  This is the simplest way to set Wi-Fi: just type your network name and
+#  password between the quotes below. (If you leave them blank, the device
+#  instead starts its own "PocketDNS-Setup" Wi-Fi hotspot on first boot so
+#  you can enter them from your phone - no rebuild needed. See the README.)
+# ==========================================================================
+CONFIG_POCKETDNS_WIFI_SSID=""
+CONFIG_POCKETDNS_WIFI_PASSWORD=""
+
+# --- Your timezone, for parental-control schedules (POSIX TZ string) -------
+#  Examples:  India "IST-5:30"   UK "GMT0BST,M3.5.0/1,M10.5.0"
+#             US East "EST5EDT,M3.2.0,M11.1.0"   UTC "UTC0"
+#  (You can also change this later from the dashboard's Settings.)
+CONFIG_POCKETDNS_TIMEZONE="UTC0"

@@ -32,3 +32,14 @@ bool schedule_remove(const char *domain);
 /* Malloc'd JSON array of {"domain","start","end"} objects; caller
  * cJSON_free()s it. */
 char *schedule_to_json(void);
+
+/* Timezone (POSIX TZ string, e.g. "IST-5:30"). Schedules use local time,
+ * so this must match where the device lives. set persists to flash and
+ * applies immediately. */
+void schedule_get_timezone(char *out, size_t out_len);
+bool schedule_set_timezone(const char *tz);
+
+/* Current device-local clock as "HH:MM" (or "--:--" before SNTP sync),
+ * and whether the clock is synced. Lets the dashboard show the time so
+ * users can confirm their timezone is correct. */
+void schedule_get_clock(char *out, size_t out_len, bool *synced);

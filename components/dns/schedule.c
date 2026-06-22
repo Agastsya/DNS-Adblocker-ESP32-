@@ -15,6 +15,10 @@ static const char *TAG = "schedule";
 #define SCHEDULE_MAX         16
 #define SCHEDULE_MAX_DOMAIN  128
 #define SCHEDULE_PATH        "/littlefs/schedules.json"
+#define TIMEZONE_PATH        "/littlefs/timezone.txt"
+#define TZ_MAX               64
+
+static char s_timezone[TZ_MAX] = CONFIG_POCKETDNS_TIMEZONE;
 
 typedef struct {
     char domain[SCHEDULE_MAX_DOMAIN];
@@ -153,12 +157,66 @@ esp_err_t schedule_init(void)
 
 void schedule_start_time_sync(void)
 {
-    setenv("TZ", CONFIG_POCKETDNS_TIMEZONE, 1);
+    /* Load a saved timezone from flash if present, else keep the build-time
+     * default. The TZ is what makes schedule windows use *local* time - get
+     * it wrong and a "9pm" rule fires at the wrong hour, which looks exactly
+     * like "parental controls aren't working". */
+    FILE *tf = fopen(TIMEZONE_PATH, "r");
+    if (tf != NULL) {
+        if (fgets(s_timezone, sizeof(s_timezone), tf) != NULL) {
+            s_timezone[strcspn(s_timezone, "\r\n")] = '\0';
+        }
+        fclose(tf);
+    }
+    if (s_timezone[0] == '\0') {
+        strlcpy(s_timezone, CONFIG_POCKETDNS_TIMEZONE, sizeof(s_timezone));
+    }
+
+    setenv("TZ", s_timezone, 1);
     tzset();
 
     esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
     esp_netif_sntp_init(&config);
-    ESP_LOGI(TAG, "SNTP time sync started (pool.ntp.org), TZ=%s", CONFIG_POCKETDNS_TIMEZONE);
+    ESP_LOGI(TAG, "SNTP time sync started (pool.ntp.org), TZ=%s", s_timezone);
+}
+
+void schedule_get_timezone(char *out, size_t out_len)
+{
+    strlcpy(out, s_timezone, out_len);
+}
+
+bool schedule_set_timezone(const char *tz)
+{
+    if (tz == NULL || tz[0] == '\0' || strlen(tz) >= TZ_MAX) {
+        return false;
+    }
+    strlcpy(s_timezone, tz, sizeof(s_timezone));
+    setenv("TZ", s_timezone, 1);
+    tzset();
+
+    FILE *f = fopen(TIMEZONE_PATH, "w");
+    if (f != NULL) {
+        fputs(s_timezone, f);
+        fclose(f);
+    }
+    ESP_LOGI(TAG, "Timezone set to %s", s_timezone);
+    return true;
+}
+
+/* Current local time as "HH:MM" plus whether the clock is SNTP-synced, for
+ * the dashboard to show (so users can confirm the timezone is right). */
+void schedule_get_clock(char *out, size_t out_len, bool *synced)
+{
+    time_t now = time(NULL);
+    struct tm tm_now;
+    localtime_r(&now, &tm_now);
+    bool ok = tm_now.tm_year >= (2020 - 1900);
+    if (synced) *synced = ok;
+    if (ok) {
+        snprintf(out, out_len, "%02d:%02d", tm_now.tm_hour, tm_now.tm_min);
+    } else {
+        strlcpy(out, "--:--", out_len);
+    }
 }
 
 bool schedule_add(const char *domain, int start_min, int end_min)

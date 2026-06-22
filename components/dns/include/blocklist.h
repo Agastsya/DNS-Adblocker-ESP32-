@@ -29,3 +29,10 @@ char *blocklist_whitelist_to_json(void);
 bool blocklist_manual_add(const char *domain);
 bool blocklist_manual_remove(const char *domain);
 char *blocklist_manual_to_json(void);
+
+/* User-uploaded custom blocklist (bulk paste/import, one domain per line).
+ * set replaces the whole list from raw text and persists it; get_text
+ * returns the stored text (caller free()s); count is the active entries. */
+bool blocklist_custom_set(const char *text);
+char *blocklist_custom_get_text(void);
+size_t blocklist_custom_count(void);

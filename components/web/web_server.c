@@ -2,6 +2,7 @@
 
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "esp_log.h"
 #include "esp_http_server.h"
@@ -296,9 +297,139 @@ static esp_err_t api_schedules_post_handler(httpd_req_t *req)
     return err;
 }
 
+static esp_err_t api_history_get_handler(httpd_req_t *req)
+{
+    if (!check_auth(req)) {
+        return ESP_OK;
+    }
+    char *json = dns_stats_history_to_json();
+    if (json == NULL) {
+        httpd_resp_send_500(req);
+        return ESP_FAIL;
+    }
+    httpd_resp_set_type(req, "application/json");
+    esp_err_t err = httpd_resp_send(req, json, HTTPD_RESP_USE_STRLEN);
+    cJSON_free(json);
+    return err;
+}
+
+/* GET /api/settings -> {timezone, clock, synced, custom_count} */
+static esp_err_t api_settings_get_handler(httpd_req_t *req)
+{
+    if (!check_auth(req)) {
+        return ESP_OK;
+    }
+    char tz[64], clock[8];
+    bool synced = false;
+    schedule_get_timezone(tz, sizeof(tz));
+    schedule_get_clock(clock, sizeof(clock), &synced);
+
+    cJSON *o = cJSON_CreateObject();
+    cJSON_AddStringToObject(o, "timezone", tz);
+    cJSON_AddStringToObject(o, "clock", clock);
+    cJSON_AddBoolToObject(o, "synced", synced);
+    cJSON_AddNumberToObject(o, "custom_count", (double)blocklist_custom_count());
+    char *json = cJSON_PrintUnformatted(o);
+    cJSON_Delete(o);
+
+    httpd_resp_set_type(req, "application/json");
+    esp_err_t err = httpd_resp_send(req, json ? json : "{}", HTTPD_RESP_USE_STRLEN);
+    cJSON_free(json);
+    return err;
+}
+
+/* POST /api/settings with {"timezone":"IST-5:30"} */
+static esp_err_t api_settings_post_handler(httpd_req_t *req)
+{
+    if (!check_auth(req)) {
+        return ESP_OK;
+    }
+    char body[160];
+    int total = req->content_len;
+    if (total <= 0 || total >= (int)sizeof(body)) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Bad body");
+        return ESP_FAIL;
+    }
+    int n = httpd_req_recv(req, body, total);
+    if (n <= 0) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Could not read body");
+        return ESP_FAIL;
+    }
+    body[n] = '\0';
+
+    cJSON *root = cJSON_Parse(body);
+    cJSON *tz = root ? cJSON_GetObjectItem(root, "timezone") : NULL;
+    bool ok = cJSON_IsString(tz) && schedule_set_timezone(tz->valuestring);
+    cJSON_Delete(root);
+
+    if (!ok) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid timezone");
+        return ESP_FAIL;
+    }
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_send(req, "{\"ok\":true}", HTTPD_RESP_USE_STRLEN);
+}
+
+/* GET /api/customlist -> the raw uploaded text (text/plain) */
+static esp_err_t api_customlist_get_handler(httpd_req_t *req)
+{
+    if (!check_auth(req)) {
+        return ESP_OK;
+    }
+    char *text = blocklist_custom_get_text();
+    httpd_resp_set_type(req, "text/plain");
+    esp_err_t err = httpd_resp_send(req, text ? text : "", HTTPD_RESP_USE_STRLEN);
+    free(text);
+    return err;
+}
+
+/* POST /api/customlist - body is the raw list text (one domain per line),
+ * read in chunks since it can be tens of KB. */
+static esp_err_t api_customlist_post_handler(httpd_req_t *req)
+{
+    if (!check_auth(req)) {
+        return ESP_OK;
+    }
+    int total = req->content_len;
+    if (total < 0 || total > 48 * 1024) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "List too large (48KB max)");
+        return ESP_FAIL;
+    }
+    char *buf = malloc((size_t)total + 1);
+    if (buf == NULL) {
+        httpd_resp_send_500(req);
+        return ESP_FAIL;
+    }
+    int got = 0;
+    while (got < total) {
+        int r = httpd_req_recv(req, buf + got, total - got);
+        if (r <= 0) {
+            free(buf);
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Could not read body");
+            return ESP_FAIL;
+        }
+        got += r;
+    }
+    buf[total] = '\0';
+
+    bool ok = blocklist_custom_set(buf);
+    free(buf);
+    if (!ok) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Could not save list");
+        return ESP_FAIL;
+    }
+
+    char resp[48];
+    snprintf(resp, sizeof(resp), "{\"count\":%u}", (unsigned)blocklist_custom_count());
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_send(req, resp, HTTPD_RESP_USE_STRLEN);
+}
+
 void web_server_start(void)
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    config.max_uri_handlers = 20;   /* default 8 is too few for our REST API */
+    config.stack_size = 8192;       /* JSON building + larger list responses */
     httpd_handle_t server = NULL;
 
 #if CONFIG_POCKETDNS_WEB_AUTH_ENABLE
@@ -365,6 +496,31 @@ void web_server_start(void)
         .handler = api_schedules_post_handler,
     };
     httpd_register_uri_handler(server, &schedules_post_uri);
+
+    httpd_uri_t history_uri = {
+        .uri = "/api/history", .method = HTTP_GET, .handler = api_history_get_handler,
+    };
+    httpd_register_uri_handler(server, &history_uri);
+
+    httpd_uri_t settings_get_uri = {
+        .uri = "/api/settings", .method = HTTP_GET, .handler = api_settings_get_handler,
+    };
+    httpd_register_uri_handler(server, &settings_get_uri);
+
+    httpd_uri_t settings_post_uri = {
+        .uri = "/api/settings", .method = HTTP_POST, .handler = api_settings_post_handler,
+    };
+    httpd_register_uri_handler(server, &settings_post_uri);
+
+    httpd_uri_t customlist_get_uri = {
+        .uri = "/api/customlist", .method = HTTP_GET, .handler = api_customlist_get_handler,
+    };
+    httpd_register_uri_handler(server, &customlist_get_uri);
+
+    httpd_uri_t customlist_post_uri = {
+        .uri = "/api/customlist", .method = HTTP_POST, .handler = api_customlist_post_handler,
+    };
+    httpd_register_uri_handler(server, &customlist_post_uri);
 
     ESP_LOGI(TAG, "HTTP server started - dashboard at http://<device-ip>/");
 }

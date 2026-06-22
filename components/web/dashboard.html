@@ -11,106 +11,128 @@
     --text: #1d1d1f;
     --secondary: #6e6e73;
     --tertiary: #a1a1a6;
-    --line: #e3e3e6;
+    --line: #e6e6ea;
     --accent: #0071e3;
     --danger: #d70015;
     --ok: #1d8a4e;
+    --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.04);
   }
   * { box-sizing: border-box; }
   html { -webkit-text-size-adjust: 100%; }
   body {
-    margin: 0;
-    background: var(--bg);
-    color: var(--text);
+    margin: 0; background: var(--bg); color: var(--text);
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
-    -webkit-font-smoothing: antialiased;
-    line-height: 1.47;
+    -webkit-font-smoothing: antialiased; line-height: 1.47;
   }
-  .wrap { max-width: 720px; margin: 0 auto; padding: 3.5rem 1.4rem 5rem; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 2.6rem 1.4rem 5rem; }
 
-  header { margin-bottom: 3rem; }
-  header .eyebrow { font-size: 0.8rem; color: var(--accent); font-weight: 600; letter-spacing: 0.01em; }
-  header h1 { font-size: 2.6rem; font-weight: 600; letter-spacing: -0.03em; margin: 0.25rem 0 0.3rem; }
-  header .state { font-size: 1.05rem; color: var(--secondary); }
-  header .state b { color: var(--text); font-weight: 600; }
+  header { display: flex; align-items: center; gap: 0.85rem; margin-bottom: 2.4rem; }
+  .mark { width: 40px; height: 40px; border-radius: 11px; background: var(--accent);
+          display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .mark svg { width: 22px; height: 22px; }
+  .ttl h1 { font-size: 1.5rem; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
+  .ttl p { margin: 0; font-size: 0.86rem; color: var(--secondary); }
+  .pill { margin-left: auto; display: flex; align-items: center; gap: 0.45rem;
+          font-size: 0.82rem; color: var(--secondary); background: var(--surface);
+          border: 1px solid var(--line); padding: 0.4rem 0.75rem; border-radius: 999px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--tertiary); }
+  .dot.on { background: var(--ok); } .dot.off { background: var(--danger); }
 
-  .figures { display: flex; flex-wrap: wrap; gap: 2.6rem; margin: 2.4rem 0 3.2rem; }
-  .figure .n { font-size: 2.3rem; font-weight: 600; letter-spacing: -0.02em; }
-  .figure .l { font-size: 0.9rem; color: var(--secondary); margin-top: 0.1rem; }
-  .figure.block .n { color: var(--danger); }
+  .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.7rem; margin-bottom: 1.5rem; }
+  @media (max-width: 560px) { .cards { grid-template-columns: repeat(2, 1fr); } }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+          padding: 1rem 1.1rem; box-shadow: var(--shadow); }
+  .card .n { font-size: 1.7rem; font-weight: 600; letter-spacing: -0.02em; }
+  .card .l { font-size: 0.82rem; color: var(--secondary); margin-top: 0.1rem; }
+  .card.b .n { color: var(--danger); }
 
-  section { border-top: 1px solid var(--line); padding: 2.3rem 0 0.6rem; }
-  section h2 { font-size: 1.4rem; font-weight: 600; letter-spacing: -0.02em; margin: 0 0 0.3rem; }
-  section .note { color: var(--secondary); font-size: 0.95rem; margin: 0 0 1.4rem; max-width: 46ch; }
+  .graph { background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+           padding: 1.1rem 1.2rem 0.6rem; box-shadow: var(--shadow); margin-bottom: 2.2rem; }
+  .graph .gh { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 0.7rem; }
+  .graph .gh h3 { margin: 0; font-size: 1rem; font-weight: 600; }
+  .graph .gh span { font-size: 0.8rem; color: var(--tertiary); }
+  .graph svg { width: 100%; height: 120px; display: block; }
+  .legend { display: flex; gap: 1rem; font-size: 0.78rem; color: var(--secondary); padding: 0.5rem 0.1rem 0.2rem; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 0.35rem; vertical-align: -1px; }
 
-  .field { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; }
-  input[type=text], input[type=time] {
-    flex: 1 1 200px; min-width: 0;
-    font: inherit; font-size: 1rem;
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    padding: 0.75rem 0.95rem;
-    color: var(--text);
+  section { border-top: 1px solid var(--line); padding: 2rem 0 0.4rem; }
+  section h2 { font-size: 1.3rem; font-weight: 600; letter-spacing: -0.02em; margin: 0 0 0.25rem; }
+  section .note { color: var(--secondary); font-size: 0.92rem; margin: 0 0 1.2rem; max-width: 52ch; }
+
+  .field { display: flex; gap: 0.55rem; flex-wrap: wrap; align-items: center; }
+  input[type=text], input[type=time], select, textarea {
+    font: inherit; font-size: 1rem; background: var(--surface); border: 1px solid var(--line);
+    border-radius: 11px; padding: 0.7rem 0.9rem; color: var(--text);
     transition: border-color .15s, box-shadow .15s;
   }
-  input[type=time] { flex: 0 0 auto; }
-  input::placeholder { color: var(--tertiary); }
-  input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 4px rgba(0,113,227,0.12); }
+  input[type=text] { flex: 1 1 200px; min-width: 0; }
+  input[type=time], select { flex: 0 0 auto; }
+  textarea { width: 100%; min-height: 130px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9rem; }
+  input::placeholder, textarea::placeholder { color: var(--tertiary); }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 4px rgba(0,113,227,0.12); }
 
-  button {
-    font: inherit; font-size: 1rem; font-weight: 500;
-    border: none; border-radius: 980px;
-    padding: 0.72rem 1.4rem;
-    background: var(--accent); color: #fff;
-    cursor: pointer; transition: opacity .15s;
-    white-space: nowrap;
-  }
+  button { font: inherit; font-size: 1rem; font-weight: 500; border: none; border-radius: 980px;
+           padding: 0.7rem 1.4rem; background: var(--accent); color: #fff; cursor: pointer; transition: opacity .15s; white-space: nowrap; }
   button:hover { opacity: 0.88; }
+  button.ghost { background: var(--surface); color: var(--accent); border: 1px solid var(--line); }
 
-  ul { list-style: none; padding: 0; margin: 1.4rem 0 0; }
-  li {
-    display: flex; align-items: center; gap: 1rem;
-    padding: 0.85rem 0.25rem;
-    border-bottom: 1px solid var(--line);
-  }
+  ul { list-style: none; padding: 0; margin: 1.2rem 0 0; }
+  li { display: flex; align-items: center; gap: 1rem; padding: 0.8rem 0.25rem; border-bottom: 1px solid var(--line); }
   li:last-child { border-bottom: none; }
   li .domain { font-size: 1rem; }
   li .when { margin-left: auto; color: var(--secondary); font-size: 0.9rem; font-variant-numeric: tabular-nums; }
-  li .x {
-    margin-left: auto;
-    background: none; color: var(--accent); padding: 0.2rem 0.3rem;
-    border-radius: 0; font-size: 0.92rem; font-weight: 400;
-  }
+  li .x { margin-left: auto; background: none; color: var(--accent); padding: 0.2rem 0.3rem; font-size: 0.92rem; font-weight: 400; }
   li .when + .x { margin-left: 0; }
-  li .x:hover { opacity: 1; text-decoration: underline; }
-  .none { color: var(--tertiary); font-size: 0.95rem; padding: 0.6rem 0.25rem; }
+  li .x:hover { text-decoration: underline; }
+  .none { color: var(--tertiary); font-size: 0.95rem; padding: 0.55rem 0.25rem; }
+  .row2 { margin-top: 0.9rem; display: flex; gap: 0.6rem; align-items: center; }
+  .saved { color: var(--ok); font-size: 0.88rem; opacity: 0; transition: opacity .2s; }
+  .saved.show { opacity: 1; }
   footer { margin-top: 3rem; color: var(--tertiary); font-size: 0.82rem; }
 </style>
 </head>
 <body>
   <div class="wrap">
     <header>
-      <div class="eyebrow">PocketDNS</div>
-      <h1>Overview</h1>
-      <div class="state" id="state">Connecting…</div>
+      <div class="mark">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 2L4 5v6c0 5 3.5 8.5 8 11 4.5-2.5 8-6 8-11V5l-8-3z" fill="#fff"/><path d="M9 12l2 2 4-4" stroke="#0071e3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div class="ttl"><h1>PocketDNS</h1><p id="sub">Network ad &amp; tracker blocker</p></div>
+      <div class="pill"><span class="dot" id="dot"></span><span id="clock">--:--</span></div>
     </header>
 
-    <div class="figures">
-      <div class="figure"><div class="n" id="total_queries">–</div><div class="l">Queries</div></div>
-      <div class="figure block"><div class="n" id="blocked">–</div><div class="l" id="blocked_l">Blocked</div></div>
-      <div class="figure"><div class="n" id="cache_hits">–</div><div class="l">Served from cache</div></div>
-      <div class="figure"><div class="n" id="forwarded">–</div><div class="l">Forwarded</div></div>
+    <div class="cards">
+      <div class="card"><div class="n" id="total_queries">–</div><div class="l">Queries (24h)</div></div>
+      <div class="card b"><div class="n" id="blocked">–</div><div class="l" id="blocked_l">Blocked</div></div>
+      <div class="card"><div class="n" id="cache_hits">–</div><div class="l">Cached</div></div>
+      <div class="card"><div class="n" id="forwarded">–</div><div class="l">Forwarded</div></div>
+    </div>
+
+    <div class="graph">
+      <div class="gh"><h3>Activity</h3><span>last 24 hours</span></div>
+      <svg id="chart" viewBox="0 0 480 120" preserveAspectRatio="none"></svg>
+      <div class="legend"><span><i style="background:#c7c7cc"></i>Allowed</span><span><i style="background:#d70015"></i>Blocked</span></div>
     </div>
 
     <section>
       <h2>Block a website</h2>
-      <p class="note">Add any domain to block it on every device using PocketDNS. Subdomains are included.</p>
+      <p class="note">Add a domain to block it on every device using PocketDNS. Subdomains are included.</p>
       <div class="field">
         <input type="text" id="bl-input" placeholder="facebook.com" autocomplete="off" autocapitalize="off" spellcheck="false">
         <button id="bl-add">Block</button>
       </div>
       <ul id="bl-list"></ul>
+    </section>
+
+    <section>
+      <h2>Upload a blocklist</h2>
+      <p class="note">Paste your own list, one domain per line (up to ~2,000). These are blocked in addition to the built-in list. Saving replaces the current custom list.</p>
+      <textarea id="cl-text" placeholder="ads.example.com&#10;tracker.example.net&#10;..."></textarea>
+      <div class="row2">
+        <button id="cl-save">Save list</button>
+        <span class="saved" id="cl-saved">Saved ✓</span>
+        <span class="none" id="cl-count"></span>
+      </div>
     </section>
 
     <section>
@@ -124,8 +146,8 @@
     </section>
 
     <section>
-      <h2>Schedules</h2>
-      <p class="note">Block a domain during a daily time window, in local time. Overnight ranges work too.</p>
+      <h2>Parental controls</h2>
+      <p class="note">Block a domain during a daily time window. Times use the device's local clock (<b id="tznow">--:--</b>) — set your timezone below if that's wrong.</p>
       <div class="field">
         <input type="text" id="sc-domain" placeholder="youtube.com" autocomplete="off" autocapitalize="off" spellcheck="false">
         <input type="time" id="sc-start" value="21:00">
@@ -133,6 +155,27 @@
         <button id="sc-add">Add</button>
       </div>
       <ul id="sc-list"></ul>
+    </section>
+
+    <section>
+      <h2>Settings</h2>
+      <p class="note">Timezone is used for parental-control schedules. Device clock now: <b id="clock2">--:--</b> <span id="syncwarn" style="color:var(--danger)"></span></p>
+      <div class="field">
+        <select id="tz-select">
+          <option value="IST-5:30">India (IST)</option>
+          <option value="GMT0BST,M3.5.0/1,M10.5.0">UK (GMT/BST)</option>
+          <option value="CET-1CEST,M3.5.0,M10.5.0/3">Central Europe (CET)</option>
+          <option value="EST5EDT,M3.2.0,M11.1.0">US Eastern</option>
+          <option value="CST6CDT,M3.2.0,M11.1.0">US Central</option>
+          <option value="MST7MDT,M3.2.0,M11.1.0">US Mountain</option>
+          <option value="PST8PDT,M3.2.0,M11.1.0">US Pacific</option>
+          <option value="JST-9">Japan (JST)</option>
+          <option value="AEST-10AEDT,M10.1.0,M4.1.0/3">Sydney</option>
+          <option value="UTC0">UTC</option>
+        </select>
+        <button id="tz-save">Save timezone</button>
+        <span class="saved" id="tz-saved">Saved ✓</span>
+      </div>
     </section>
 
     <footer id="updated">Loading…</footer>
@@ -151,62 +194,106 @@
         $('forwarded').textContent = fmt(d.forwarded);
         const pct = d.total_queries ? Math.round(d.blocked / d.total_queries * 100) : 0;
         $('blocked_l').textContent = 'Blocked · ' + pct + '%';
-        $('state').innerHTML = 'Online · <b>' + fmt(d.blocked) + '</b> requests blocked';
+        $('dot').className = 'dot on';
         $('updated').textContent = 'Updated ' + new Date().toLocaleTimeString();
-      } catch (e) {
-        $('state').textContent = 'Offline — could not reach device';
-      }
+      } catch (e) { $('dot').className = 'dot off'; $('updated').textContent = 'Could not reach device'; }
+    }
+
+    async function drawChart() {
+      try {
+        const data = await (await fetch('/api/history')).json();
+        const max = Math.max(1, ...data.map(b => b.total));
+        const W = 480, H = 120, n = data.length, bw = W / n;
+        let svg = '';
+        data.forEach((b, i) => {
+          const x = i * bw;
+          const th = (b.total / max) * (H - 4);
+          const bh = (b.blocked / max) * (H - 4);
+          svg += `<rect x="${x+0.5}" y="${H-th}" width="${bw-1}" height="${th}" fill="#c7c7cc"/>`;
+          if (bh > 0) svg += `<rect x="${x+0.5}" y="${H-bh}" width="${bw-1}" height="${bh}" fill="#d70015"/>`;
+        });
+        $('chart').innerHTML = svg;
+      } catch (e) {}
     }
 
     function renderDomains(elId, items, onRemove, empty) {
       const ul = $(elId); ul.innerHTML = '';
-      if (!items.length) { const li = document.createElement('li'); li.className = 'none'; li.textContent = empty; ul.appendChild(li); return; }
+      if (!items.length) { const li = document.createElement('li'); li.className='none'; li.textContent=empty; ul.appendChild(li); return; }
       for (const d of items) {
         const li = document.createElement('li');
-        const s = document.createElement('span'); s.className = 'domain'; s.textContent = d;
-        const x = document.createElement('button'); x.className = 'x'; x.textContent = 'Remove'; x.onclick = () => onRemove(d);
+        const s = document.createElement('span'); s.className='domain'; s.textContent=d;
+        const x = document.createElement('button'); x.className='x'; x.textContent='Remove'; x.onclick=()=>onRemove(d);
         li.append(s, x); ul.appendChild(li);
       }
     }
-
-    async function getList(url, elId, onRemove, empty) {
-      try { renderDomains(elId, await (await fetch(url)).json(), onRemove, empty); } catch (e) {}
-    }
+    async function getList(url, elId, onRemove, empty) { try { renderDomains(elId, await (await fetch(url)).json(), onRemove, empty); } catch(e){} }
     async function post(url, payload, then) {
-      try { const r = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) }); if (r.ok && then) then(await r.json()); } catch (e) {}
+      try { const r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)}); if (r.ok && then) then(await r.json()); } catch(e){}
     }
 
-    // Block list
-    const blRm = (d) => post('/api/blocklist', {domain:d, action:'remove'}, (i)=>renderDomains('bl-list', i, blRm, 'Nothing blocked yet.'));
-    $('bl-add').onclick = () => { const v = $('bl-input').value.trim(); if (v) { post('/api/blocklist', {domain:v, action:'add'}, (i)=>renderDomains('bl-list', i, blRm, 'Nothing blocked yet.')); $('bl-input').value=''; } };
-    $('bl-input').addEventListener('keydown', e => { if (e.key==='Enter') $('bl-add').click(); });
+    const blRm = (d)=>post('/api/blocklist',{domain:d,action:'remove'},(i)=>renderDomains('bl-list',i,blRm,'Nothing blocked yet.'));
+    $('bl-add').onclick=()=>{ const v=$('bl-input').value.trim(); if(v){ post('/api/blocklist',{domain:v,action:'add'},(i)=>renderDomains('bl-list',i,blRm,'Nothing blocked yet.')); $('bl-input').value=''; } };
+    $('bl-input').addEventListener('keydown',e=>{ if(e.key==='Enter') $('bl-add').click(); });
 
-    // Allow list
-    const wlRm = (d) => post('/api/whitelist', {domain:d, action:'remove'}, (i)=>renderDomains('wl-list', i, wlRm, 'Nothing allowed yet.'));
-    $('wl-add').onclick = () => { const v = $('wl-input').value.trim(); if (v) { post('/api/whitelist', {domain:v, action:'add'}, (i)=>renderDomains('wl-list', i, wlRm, 'Nothing allowed yet.')); $('wl-input').value=''; } };
-    $('wl-input').addEventListener('keydown', e => { if (e.key==='Enter') $('wl-add').click(); });
+    const wlRm = (d)=>post('/api/whitelist',{domain:d,action:'remove'},(i)=>renderDomains('wl-list',i,wlRm,'Nothing allowed yet.'));
+    $('wl-add').onclick=()=>{ const v=$('wl-input').value.trim(); if(v){ post('/api/whitelist',{domain:v,action:'add'},(i)=>renderDomains('wl-list',i,wlRm,'Nothing allowed yet.')); $('wl-input').value=''; } };
+    $('wl-input').addEventListener('keydown',e=>{ if(e.key==='Enter') $('wl-add').click(); });
+
+    // Custom uploaded blocklist
+    async function loadCustom() {
+      try {
+        const t = await (await fetch('/api/customlist')).text();
+        $('cl-text').value = t;
+        const lines = t.split('\n').filter(x => x.trim() && !x.trim().startsWith('#')).length;
+        $('cl-count').textContent = lines ? lines + ' domains' : '';
+      } catch(e){}
+    }
+    $('cl-save').onclick = async () => {
+      try {
+        const r = await fetch('/api/customlist', {method:'POST', headers:{'Content-Type':'text/plain'}, body:$('cl-text').value});
+        if (r.ok) { const d = await r.json(); $('cl-count').textContent = d.count + ' domains'; const s=$('cl-saved'); s.classList.add('show'); setTimeout(()=>s.classList.remove('show'),1500); }
+      } catch(e){}
+    };
 
     // Schedules
-    const toHM = (m) => String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
-    const toMin = (s) => { const [h,m]=s.split(':').map(Number); return h*60+m; };
+    const toHM=(m)=>String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
+    const toMin=(s)=>{ const[h,m]=s.split(':').map(Number); return h*60+m; };
     function renderSchedules(items) {
-      const ul = $('sc-list'); ul.innerHTML = '';
-      if (!items.length) { const li=document.createElement('li'); li.className='none'; li.textContent='No schedules yet.'; ul.appendChild(li); return; }
-      for (const s of items) {
-        const li = document.createElement('li');
-        const d = document.createElement('span'); d.className='domain'; d.textContent=s.domain;
-        const w = document.createElement('span'); w.className='when'; w.textContent=toHM(s.start)+' – '+toHM(s.end);
-        const x = document.createElement('button'); x.className='x'; x.textContent='Remove'; x.onclick=()=>post('/api/schedules', {domain:s.domain, action:'remove'}, renderSchedules);
-        li.append(d, w, x); ul.appendChild(li);
+      const ul=$('sc-list'); ul.innerHTML='';
+      if(!items.length){ const li=document.createElement('li'); li.className='none'; li.textContent='No schedules yet.'; ul.appendChild(li); return; }
+      for(const s of items){
+        const li=document.createElement('li');
+        const d=document.createElement('span'); d.className='domain'; d.textContent=s.domain;
+        const w=document.createElement('span'); w.className='when'; w.textContent=toHM(s.start)+' – '+toHM(s.end);
+        const x=document.createElement('button'); x.className='x'; x.textContent='Remove'; x.onclick=()=>post('/api/schedules',{domain:s.domain,action:'remove'},renderSchedules);
+        li.append(d,w,x); ul.appendChild(li);
       }
     }
-    $('sc-add').onclick = () => { const d=$('sc-domain').value.trim(), a=$('sc-start').value, b=$('sc-end').value; if (d&&a&&b) { post('/api/schedules', {domain:d, start:toMin(a), end:toMin(b)}, renderSchedules); $('sc-domain').value=''; } };
+    $('sc-add').onclick=()=>{ const d=$('sc-domain').value.trim(),a=$('sc-start').value,b=$('sc-end').value; if(d&&a&&b){ post('/api/schedules',{domain:d,start:toMin(a),end:toMin(b)},renderSchedules); $('sc-domain').value=''; } };
 
-    refresh();
-    getList('/api/blocklist', 'bl-list', blRm, 'Nothing blocked yet.');
-    getList('/api/whitelist', 'wl-list', wlRm, 'Nothing allowed yet.');
+    // Settings (timezone + clock)
+    async function loadSettings() {
+      try {
+        const s = await (await fetch('/api/settings')).json();
+        $('clock').textContent = s.clock; $('clock2').textContent = s.clock; $('tznow').textContent = s.clock;
+        $('syncwarn').textContent = s.synced ? '' : '(waiting for internet time…)';
+        if (s.timezone) $('tz-select').value = s.timezone;
+      } catch(e){}
+    }
+    $('tz-save').onclick = async () => {
+      await post('/api/settings', {timezone:$('tz-select').value}, ()=>{});
+      const s=$('tz-saved'); s.classList.add('show'); setTimeout(()=>s.classList.remove('show'),1500);
+      loadSettings();
+    };
+
+    refresh(); drawChart();
+    getList('/api/blocklist','bl-list',blRm,'Nothing blocked yet.');
+    getList('/api/whitelist','wl-list',wlRm,'Nothing allowed yet.');
     fetch('/api/schedules').then(r=>r.json()).then(renderSchedules).catch(()=>{});
+    loadCustom(); loadSettings();
     setInterval(refresh, 2000);
+    setInterval(drawChart, 30000);
+    setInterval(loadSettings, 10000);
   </script>
 </body>
 </html>
