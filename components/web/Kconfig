@@ -1,0 +1,24 @@
+menu "PocketDNS Web Dashboard"
+
+    config POCKETDNS_WEB_AUTH_ENABLE
+        bool "Require HTTP Basic Auth for the dashboard"
+        default y
+        help
+            When enabled, the web dashboard and REST API require a
+            username and password (HTTP Basic Auth). Recommended so that
+            anyone on your LAN can't change settings.
+
+    config POCKETDNS_WEB_AUTH_USER
+        string "Dashboard username"
+        depends on POCKETDNS_WEB_AUTH_ENABLE
+        default "admin"
+
+    config POCKETDNS_WEB_AUTH_PASSWORD
+        string "Dashboard password"
+        depends on POCKETDNS_WEB_AUTH_ENABLE
+        default "pocketdns"
+        help
+            Stored in sdkconfig (gitignored). Change this from the
+            default before deploying.
+
+endmenu

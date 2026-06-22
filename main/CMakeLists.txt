@@ -9,5 +9,5 @@
 idf_component_register(
     SRCS "pocketdns_main.c"
     INCLUDE_DIRS "."
-    REQUIRES storage wifi dns
+    REQUIRES storage wifi dns web ota
 )

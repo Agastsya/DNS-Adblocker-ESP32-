@@ -2,6 +2,9 @@
 #include "dns_parser.h"
 #include "dns_forwarder.h"
 #include "blocklist.h"
+#include "dns_cache.h"
+#include "dns_stats.h"
+#include "schedule.h"
 
 #include <errno.h>
 
@@ -58,29 +61,46 @@ static void dns_listener_task(void *pvParameters)
 
         dns_query_t query;
         if (dns_parse_query((const uint8_t *)rx_buffer, len, &query) && query.qdcount > 0) {
+            dns_stats_record_query();
             ESP_LOGI(TAG, "Query id=0x%04x from %s:%d -> %s (%s)%s",
                      query.id, inet_ntoa(source_addr.sin_addr), ntohs(source_addr.sin_port),
                      query.qname, dns_qtype_name(query.qtype), query.rd ? " rd" : "");
 
-            if (blocklist_is_blocked(query.qname)) {
+            if (blocklist_is_blocked(query.qname) || schedule_is_blocked_now(query.qname)) {
+                dns_stats_record_blocked();
                 dns_make_nxdomain_response((uint8_t *)rx_buffer, len);
                 sendto(sock, rx_buffer, len, 0, (struct sockaddr *)&source_addr, socklen);
                 ESP_LOGI(TAG, "Blocked %s - sent NXDOMAIN to %s:%d",
                          query.qname, inet_ntoa(source_addr.sin_addr), ntohs(source_addr.sin_port));
             } else {
                 uint8_t response_buffer[DNS_RX_BUF_LEN];
-                int response_len = dns_forward_query((const uint8_t *)rx_buffer, len,
-                                                      response_buffer, sizeof(response_buffer));
+                int response_len = dns_cache_lookup(query.qname, query.qtype, query.id,
+                                                     response_buffer, sizeof(response_buffer));
                 if (response_len > 0) {
+                    dns_stats_record_cache_hit();
                     sendto(sock, response_buffer, response_len, 0,
                            (struct sockaddr *)&source_addr, socklen);
-                    ESP_LOGI(TAG, "Forwarded %d-byte reply for %s to %s:%d",
-                             response_len, query.qname,
+                    ESP_LOGI(TAG, "Cache hit for %s - served %d bytes to %s:%d",
+                             query.qname, response_len,
                              inet_ntoa(source_addr.sin_addr), ntohs(source_addr.sin_port));
                 } else {
-                    ESP_LOGW(TAG, "Upstream forward for %s failed - no reply sent to client", query.qname);
+                    response_len = dns_forward_query((const uint8_t *)rx_buffer, len,
+                                                       response_buffer, sizeof(response_buffer));
+                    if (response_len > 0) {
+                        dns_stats_record_forwarded();
+                        dns_cache_store(query.qname, query.qtype, response_buffer, response_len);
+                        sendto(sock, response_buffer, response_len, 0,
+                               (struct sockaddr *)&source_addr, socklen);
+                        ESP_LOGI(TAG, "Forwarded %d-byte reply for %s to %s:%d",
+                                 response_len, query.qname,
+                                 inet_ntoa(source_addr.sin_addr), ntohs(source_addr.sin_port));
+                    } else {
+                        dns_stats_record_forward_failure();
+                        ESP_LOGW(TAG, "Upstream forward for %s failed - no reply sent to client", query.qname);
+                    }
                 }
             }
+            dns_stats_checkpoint();
         } else {
             ESP_LOGW(TAG, "Received %d bytes from %s:%d - not a parseable DNS query",
                      len, inet_ntoa(source_addr.sin_addr), ntohs(source_addr.sin_port));
@@ -91,5 +111,9 @@ static void dns_listener_task(void *pvParameters)
 void dns_server_start(void)
 {
     blocklist_init();
+    blocklist_start_cloud_sync();
+    dns_stats_init();
+    schedule_init();
+    schedule_start_time_sync();
     xTaskCreate(dns_listener_task, "dns_listener", 4096, NULL, 5, NULL);
 }

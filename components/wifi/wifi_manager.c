@@ -1,10 +1,14 @@
 #include "wifi_manager.h"
+#include "captive_portal.h"
+
+#include <string.h>
 
 #include "esp_log.h"
 #include "esp_wifi.h"
 #include "esp_event.h"
 #include "esp_netif.h"
 #include "nvs_flash.h"
+#include "nvs.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 
@@ -14,6 +18,10 @@ static const char *TAG = "wifi_manager";
  * attempt back to wifi_manager_connect(), which blocks waiting for one. */
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT      BIT1
+
+#define NVS_WIFI_NAMESPACE "pdns_wifi"
+#define NVS_KEY_SSID       "ssid"
+#define NVS_KEY_PASS       "pass"
 
 static EventGroupHandle_t s_wifi_event_group;
 static int s_retry_num = 0;
@@ -51,18 +59,69 @@ static esp_err_t nvs_init(void)
     return err;
 }
 
+/* Fill ssid/pass from NVS; if nothing's stored there, fall back to the
+ * build-time Kconfig defaults. Returns true if a non-empty SSID resulted
+ * (i.e. we have something to try connecting with). */
+static bool load_credentials(char *ssid, size_t ssid_len, char *pass, size_t pass_len)
+{
+    ssid[0] = '\0';
+    pass[0] = '\0';
+
+    nvs_handle_t h;
+    if (nvs_open(NVS_WIFI_NAMESPACE, NVS_READONLY, &h) == ESP_OK) {
+        size_t sl = ssid_len, pl = pass_len;
+        nvs_get_str(h, NVS_KEY_SSID, ssid, &sl);
+        nvs_get_str(h, NVS_KEY_PASS, pass, &pl);
+        nvs_close(h);
+    }
+
+    if (ssid[0] == '\0') {
+        /* Nothing provisioned yet - seed from the build-time defaults so a
+         * freshly-flashed device with Kconfig creds still "just works". */
+        strlcpy(ssid, CONFIG_POCKETDNS_WIFI_SSID, ssid_len);
+        strlcpy(pass, CONFIG_POCKETDNS_WIFI_PASSWORD, pass_len);
+    }
+
+    return ssid[0] != '\0';
+}
+
+esp_err_t wifi_manager_save_credentials(const char *ssid, const char *password)
+{
+    nvs_handle_t h;
+    esp_err_t err = nvs_open(NVS_WIFI_NAMESPACE, NVS_READWRITE, &h);
+    if (err != ESP_OK) {
+        return err;
+    }
+    nvs_set_str(h, NVS_KEY_SSID, ssid);
+    nvs_set_str(h, NVS_KEY_PASS, password);
+    err = nvs_commit(h);
+    nvs_close(h);
+    ESP_LOGI(TAG, "Saved Wi-Fi credentials for SSID '%s' to NVS", ssid);
+    return err;
+}
+
 esp_err_t wifi_manager_connect(void)
 {
     ESP_ERROR_CHECK(nvs_init());
 
-    s_wifi_event_group = xEventGroupCreate();
-
+    /* Always bring up the netif + Wi-Fi stack first, so that if we end up
+     * with no usable credentials the captive portal can rely on a
+     * consistently-initialised state and just switch the radio to AP. */
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     esp_netif_create_default_wifi_sta();
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+
+    char ssid[33];
+    char pass[65];
+    if (!load_credentials(ssid, sizeof(ssid), pass, sizeof(pass))) {
+        ESP_LOGW(TAG, "No Wi-Fi credentials stored or configured");
+        return ESP_FAIL;
+    }
+
+    s_wifi_event_group = xEventGroupCreate();
 
     esp_event_handler_instance_t instance_any_id;
     esp_event_handler_instance_t instance_got_ip;
@@ -73,16 +132,17 @@ esp_err_t wifi_manager_connect(void)
 
     wifi_config_t wifi_config = {
         .sta = {
-            .ssid = CONFIG_POCKETDNS_WIFI_SSID,
-            .password = CONFIG_POCKETDNS_WIFI_PASSWORD,
             .threshold.authmode = WIFI_AUTH_WPA2_PSK,
         },
     };
+    strlcpy((char *)wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid));
+    strlcpy((char *)wifi_config.sta.password, pass, sizeof(wifi_config.sta.password));
+
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
     ESP_ERROR_CHECK(esp_wifi_start());
 
-    ESP_LOGI(TAG, "Connecting to SSID '%s' ...", CONFIG_POCKETDNS_WIFI_SSID);
+    ESP_LOGI(TAG, "Connecting to SSID '%s' ...", ssid);
 
     EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
                                             WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
@@ -101,4 +161,9 @@ esp_err_t wifi_manager_connect(void)
     vEventGroupDelete(s_wifi_event_group);
 
     return result;
+}
+
+void wifi_manager_start_portal(void)
+{
+    captive_portal_run();
 }

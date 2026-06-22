@@ -2,18 +2,20 @@
  * PocketDNS
  *
  * app_main() just orchestrates the components: mount storage, prove
- * persistence with a boot counter, join Wi-Fi, then start the DNS server.
- * The actual logic for each step lives in components/{storage,wifi,dns}.
+ * persistence with a boot counter, join Wi-Fi (or run the captive portal
+ * if there are no credentials), then start the DNS + web servers. The
+ * actual logic for each step lives in components/{storage,wifi,dns,web,ota}.
  * ========================================================================== */
 
 #include <stdint.h>
-#include <stdbool.h>
 
 #include "esp_log.h"
 #include "esp_system.h"
 #include "storage.h"
 #include "wifi_manager.h"
 #include "dns_server.h"
+#include "web_server.h"
+#include "ota_check.h"
 
 static const char *TAG = "pocketdns";
 
@@ -29,14 +31,17 @@ void app_main(void)
     uint32_t boots = storage_bootcount_increment();
     ESP_LOGI(TAG, ">>> This device has booted %lu time(s) <<<", (unsigned long)boots);
 
-    bool wifi_ok = (wifi_manager_connect() == ESP_OK);
-    if (!wifi_ok) {
-        ESP_LOGW(TAG, "Continuing without Wi-Fi");
+    if (wifi_manager_connect() != ESP_OK) {
+        /* No usable credentials, or the connection failed - hand off to the
+         * captive portal so the user can set up Wi-Fi. This does not return;
+         * the device reboots once they submit their details. */
+        ESP_LOGW(TAG, "Wi-Fi unavailable - starting captive portal for setup");
+        wifi_manager_start_portal();
     }
 
-    if (wifi_ok) {
-        dns_server_start();
-    }
+    dns_server_start();
+    web_server_start();
+    ota_start_periodic_check();
 
     ESP_LOGI(TAG, "Free heap: %lu bytes", (unsigned long)esp_get_free_heap_size());
     ESP_LOGI(TAG, "Boot sequence complete.");

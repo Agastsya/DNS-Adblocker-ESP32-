@@ -5,7 +5,10 @@ an **ESP32 (DevKit V1)** with **ESP-IDF v5.5.x**. Not a Pi-hole port — a
 ground-up implementation of a DNS server, forwarder, blocklist engine, cache,
 web dashboard, and OTA updater.
 
-> **Status:** Phase 1 — project skeleton + persistent storage.
+> **Status:** Feature-complete — all 12 roadmap phases implemented. A working
+> DNS ad-blocker with cloud blocklist sync, TTL cache, a dark-mode dashboard
+> (auth + whitelist + parental-control schedules), OTA updates, and captive-
+> portal Wi-Fi setup.
 
 ---
 
@@ -85,9 +88,32 @@ whole chip).
 4. ✅ DNS packet parser
 5. ✅ Upstream forwarder (1.1.1.1) — working DNS proxy
 6. ✅ Blocklist + whitelist — **it blocks ads**
-7. TTL-aware cache
-8. Statistics + logging
-9. HTTP server + dark-mode dashboard + REST API
-10. Cloud blocklist sync (daily, conditional)
-11. OTA firmware updates
-12. Polish: auth, captive portal, import/export, parental controls
+7. ✅ TTL-aware cache
+8. ✅ Statistics + logging
+9. ✅ HTTP server + dark-mode dashboard + REST API
+10. ✅ Cloud blocklist sync (daily, conditional)
+11. ✅ OTA firmware updates
+12. ✅ Polish: auth, captive portal, parental controls
+
+---
+
+## Using it
+
+Point a device's DNS at the PocketDNS IP (shown in the serial log as `Got IP`)
+and it filters ads for that device. Open `http://<that-ip>/` for the dashboard
+(default login `admin` / `pocketdns`, changeable in `idf.py menuconfig` →
+*PocketDNS Web Dashboard*). The dashboard shows live stats and lets you:
+
+- **Whitelist** domains the blocklist gets wrong (persisted to flash).
+- Set **parental-control schedules** — block a domain during a daily time
+  window, e.g. `youtube.com` from 21:00–07:00. Set your timezone via
+  `menuconfig` → *PocketDNS DNS / Schedules* so windows use local time.
+
+**Wi-Fi setup:** credentials in `menuconfig` are used as a default/seed. If
+none are set (or a saved network can't be joined), the device starts a
+`PocketDNS-Setup` Wi-Fi access point — connect to it from a phone, and a setup
+page lets you enter your home Wi-Fi; the device saves it and reboots to join.
+
+**OTA updates:** the device checks this repo's GitHub Releases daily and
+installs a `pocketdns.bin` asset whose release tag differs from the running
+`version.txt`.

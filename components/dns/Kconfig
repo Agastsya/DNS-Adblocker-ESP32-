@@ -1,0 +1,14 @@
+menu "PocketDNS DNS / Schedules"
+
+    config POCKETDNS_TIMEZONE
+        string "POSIX timezone string (for parental-control schedules)"
+        default "UTC0"
+        help
+            POSIX TZ string used to evaluate time-of-day blocking
+            schedules in local time. Examples:
+              India:        IST-5:30
+              US Eastern:   EST5EDT,M3.2.0,M11.1.0
+              UK:           GMT0BST,M3.5.0/1,M10.5.0
+            Default UTC0 means schedules are evaluated in UTC.
+
+endmenu
