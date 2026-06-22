@@ -48,8 +48,8 @@ It's important to be honest about the limits, because they're the same for
 
 | It blocks ✅ | It can't block ❌ |
 |---|---|
-| Third-party ad networks (DoubleClick, Criteo, OpenX…) | **YouTube video ads** |
-| Trackers & analytics (Google Analytics, Segment…) | Ads served from the **same domain** as the page (some news sites) |
+| Third-party ad networks (DoubleClick, Criteo, OpenX…) |  |
+| Trackers & analytics (Google Analytics, Segment…) | Ads served from the **same domain** as the page ( some rare sites) |
 | Telemetry & "phone-home" domains in apps | Anything inside an app that uses its **own** DNS |
 | Malware / phishing domains (depending on list) | |
 
