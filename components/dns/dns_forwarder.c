@@ -53,53 +53,70 @@ int dns_forwarder_set_upstream(const char *ip)
     return 0;
 }
 
-/* Send the query to one resolver IP and wait (briefly) for a reply.
- * Returns the response length, or -1 on timeout/error. */
-static int try_resolver(const char *ip, const uint8_t *query, int query_len,
-                         uint8_t *response, int response_buf_len)
-{
-    int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
-    if (sock < 0) {
-        return -1;
-    }
-    struct timeval timeout = { .tv_sec = 1, .tv_usec = 500000 };
-    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-
-    struct sockaddr_in addr = {
-        .sin_family = AF_INET,
-        .sin_port = htons(UPSTREAM_DNS_PORT),
-        .sin_addr.s_addr = inet_addr(ip),
-    };
-    if (sendto(sock, query, query_len, 0, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-        close(sock);
-        return -1;
-    }
-    int len = recvfrom(sock, response, response_buf_len, 0, NULL, NULL);
-    close(sock);
-    return len;
-}
+#define FORWARD_TIMEOUT_S 2   /* give up if neither resolver answers in time */
 
 int dns_forward_query(const uint8_t *query, int query_len,
                        uint8_t *response, int response_buf_len)
 {
-    /* Try the configured resolver first. If it doesn't answer (bad/slow
-     * upstream, outage), fall back to public resolvers so a misconfigured
-     * upstream can never take the whole network's DNS down. */
-    int len = try_resolver(s_upstream, query, query_len, response, response_buf_len);
-    if (len > 0) {
-        return len;
+    /* Race the configured resolver against a public fallback IN PARALLEL and
+     * take whichever answers first. Doing them at once (instead of waiting
+     * for the primary to time out before trying the fallback) means a slow
+     * or dead upstream can never add seconds of latency to every lookup -
+     * the page-load tax that makes a DNS filter feel "broken". */
+    const char *resolvers[2];
+    resolvers[0] = s_upstream;
+    resolvers[1] = (strcmp(s_upstream, "1.1.1.1") == 0) ? "8.8.8.8" : "1.1.1.1";
+
+    int socks[2];
+    int nsock = 0;
+    int maxfd = -1;
+    for (int i = 0; i < 2; i++) {
+        int s = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
+        if (s < 0) {
+            continue;
+        }
+        struct sockaddr_in addr = {
+            .sin_family = AF_INET,
+            .sin_port = htons(UPSTREAM_DNS_PORT),
+            .sin_addr.s_addr = inet_addr(resolvers[i]),
+        };
+        if (sendto(s, query, query_len, 0, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+            close(s);
+            continue;
+        }
+        socks[nsock++] = s;
+        if (s > maxfd) {
+            maxfd = s;
+        }
+    }
+    if (nsock == 0) {
+        return -1;
     }
 
-    static const char *fallbacks[] = { "1.1.1.1", "8.8.8.8" };
-    for (int i = 0; i < 2; i++) {
-        if (strcmp(s_upstream, fallbacks[i]) == 0) {
-            continue;  /* already tried it as the primary */
-        }
-        ESP_LOGW(TAG, "Upstream %s didn't answer - falling back to %s", s_upstream, fallbacks[i]);
-        len = try_resolver(fallbacks[i], query, query_len, response, response_buf_len);
-        if (len > 0) {
-            return len;
+    fd_set rfds;
+    FD_ZERO(&rfds);
+    for (int i = 0; i < nsock; i++) {
+        FD_SET(socks[i], &rfds);
+    }
+    struct timeval tv = { .tv_sec = FORWARD_TIMEOUT_S, .tv_usec = 0 };
+
+    int result = -1;
+    if (select(maxfd + 1, &rfds, NULL, NULL, &tv) > 0) {
+        for (int i = 0; i < nsock; i++) {
+            if (FD_ISSET(socks[i], &rfds)) {
+                int len = recvfrom(socks[i], response, response_buf_len, 0, NULL, NULL);
+                if (len > 0) {
+                    result = len;
+                    break;
+                }
+            }
         }
     }
-    return -1;
+    if (result < 0) {
+        ESP_LOGW(TAG, "No upstream answered within %ds", FORWARD_TIMEOUT_S);
+    }
+    for (int i = 0; i < nsock; i++) {
+        close(socks[i]);
+    }
+    return result;
 }
