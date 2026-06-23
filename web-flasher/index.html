@@ -37,6 +37,13 @@
   .hint { background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:1rem 1.15rem; margin-top:1.6rem; font-size:0.92rem; color:var(--secondary); }
   footer { margin-top:2.6rem; color:#a1a1a6; font-size:0.84rem; text-align:center; }
   a { color:var(--accent); text-decoration:none; } a:hover { text-decoration:underline; }
+  .install-btn { font:inherit; font-size:1.1rem; font-weight:600; border:none; border-radius:980px;
+                 padding:0.95rem 2.2rem; background:var(--accent); color:#fff; cursor:pointer; }
+  .install-btn:hover { opacity:0.9; }
+  .browser-note { font-size:0.9rem; color:var(--secondary); margin-top:1rem; }
+  .badbrowser { background:#fff4f4; border:1px solid #ffd2d2; color:#b3261e; border-radius:12px;
+                padding:1rem 1.2rem; font-size:0.97rem; line-height:1.5; }
+  .badbrowser b { color:#8a1c16; }
 </style>
 <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
 </head>
@@ -47,16 +54,23 @@
       <div><h1>PocketDNS</h1><p class="tag">Network ad &amp; tracker blocker for ESP32</p></div>
     </header>
 
-    <p class="lead">Install PocketDNS onto your ESP32 right here in your browser — no software to download, no command line. Plug the board into this computer with a USB cable and click the button.</p>
+    <p class="lead">Install PocketDNS onto your ESP32 right here in your browser — no software to download, no command line. Plug the board in with a USB cable, click Install, and pick your board when asked.</p>
 
     <div class="flash-card">
-      <p class="big">Ready to install</p>
-      <esp-web-install-button manifest="./manifest.json"></esp-web-install-button>
-      <div class="unsupported">
-        Your browser can't flash over USB. Please open this page in <b>Chrome</b>,
-        <b>Edge</b>, or <b>Opera</b> on a <b>desktop/laptop</b> (Web Serial isn't
-        available on Safari, Firefox, or phones).
-      </div>
+      <esp-web-install-button manifest="./manifest.json">
+        <button slot="activate" class="install-btn">⚡ Install PocketDNS</button>
+        <div slot="unsupported" class="badbrowser">
+          <b>This browser can't flash over USB.</b><br>
+          Web Serial only works in <b>Google Chrome</b>, <b>Microsoft Edge</b>, or
+          <b>Opera</b> on a <b>desktop or laptop</b> — not Safari, not Firefox, and
+          not phones/tablets. Open this same page in Chrome or Edge and the Install
+          button will appear.
+        </div>
+        <div slot="not-allowed" class="badbrowser">
+          This page must be opened over <b>https://</b> for USB flashing to work.
+        </div>
+      </esp-web-install-button>
+      <p class="browser-note">You don't need the board connected yet — click <b>Install</b>, then select your ESP32's port from the list that appears.</p>
     </div>
 
     <ol class="steps">
