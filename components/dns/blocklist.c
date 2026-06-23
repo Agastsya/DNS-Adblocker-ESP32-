@@ -69,6 +69,28 @@ static const char *s_blocklist[] = {
     "vortex.data.microsoft.com",    /* Windows telemetry */
     "xp.apple.com",                 /* Apple analytics */
     "ngfts.lge.com",                /* LG smart-TV telemetry */
+    /* --- native-ad / recommendation widgets common on Indian news sites
+     * (NDTV, TOI, etc.) - the "Sponsored / Learn More" real-estate and
+     * clickbait feeds at the bottom of articles --- */
+    "colombiaonline.com",           /* NDTV's own "Colombia" ad platform */
+    "mgid.com",                     /* MGID native ads */
+    "adpushup.com",                 /* AdPushup (India) header bidding */
+    "media.net",                    /* Media.net contextual ads */
+    "smartadserver.com",
+    "3lift.com",                    /* TripleLift */
+    "revcontent.com",
+    "adskeeper.com",
+    /* --- encrypted-DNS (DoH/DoT) bypass: if a browser/OS resolves one of
+     * these provider hostnames to start encrypted DNS, NXDOMAIN forces it
+     * to fall back to plain DNS - which is THIS server, so it can't sneak
+     * around the filter. (Chrome's "Secure DNS" still has to be turned off
+     * by hand; this only catches clients that bootstrap DoH via a name.) --- */
+    "use-application-dns.net",      /* Firefox auto-DoH canary -> disables it */
+    "dns.google",
+    "cloudflare-dns.com",
+    "dns.quad9.net",
+    "doh.opendns.com",
+    "dns.nextdns.io",
 };
 #define BLOCKLIST_COUNT (sizeof(s_blocklist) / sizeof(s_blocklist[0]))
 
