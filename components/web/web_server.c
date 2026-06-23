@@ -9,6 +9,7 @@
 #include "dns_stats.h"
 #include "blocklist.h"
 #include "schedule.h"
+#include "dns_forwarder.h"
 #include "cJSON.h"
 #include "sdkconfig.h"
 
@@ -319,15 +320,17 @@ static esp_err_t api_settings_get_handler(httpd_req_t *req)
     if (!check_auth(req)) {
         return ESP_OK;
     }
-    char tz[64], clock[8];
+    char tz[64], clock[8], upstream[46];
     bool synced = false;
     schedule_get_timezone(tz, sizeof(tz));
     schedule_get_clock(clock, sizeof(clock), &synced);
+    dns_forwarder_get_upstream(upstream, sizeof(upstream));
 
     cJSON *o = cJSON_CreateObject();
     cJSON_AddStringToObject(o, "timezone", tz);
     cJSON_AddStringToObject(o, "clock", clock);
     cJSON_AddBoolToObject(o, "synced", synced);
+    cJSON_AddStringToObject(o, "upstream", upstream);
     cJSON_AddNumberToObject(o, "custom_count", (double)blocklist_custom_count());
     char *json = cJSON_PrintUnformatted(o);
     cJSON_Delete(o);
@@ -358,12 +361,26 @@ static esp_err_t api_settings_post_handler(httpd_req_t *req)
     body[n] = '\0';
 
     cJSON *root = cJSON_Parse(body);
-    cJSON *tz = root ? cJSON_GetObjectItem(root, "timezone") : NULL;
-    bool ok = cJSON_IsString(tz) && schedule_set_timezone(tz->valuestring);
+    if (root == NULL) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Bad JSON");
+        return ESP_FAIL;
+    }
+    /* Either/both of timezone and upstream may be present. */
+    bool any = false, bad = false;
+    cJSON *tz = cJSON_GetObjectItem(root, "timezone");
+    if (cJSON_IsString(tz)) {
+        any = true;
+        if (!schedule_set_timezone(tz->valuestring)) bad = true;
+    }
+    cJSON *up = cJSON_GetObjectItem(root, "upstream");
+    if (cJSON_IsString(up)) {
+        any = true;
+        if (dns_forwarder_set_upstream(up->valuestring) != 0) bad = true;
+    }
     cJSON_Delete(root);
 
-    if (!ok) {
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid timezone");
+    if (!any || bad) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid timezone or upstream IP");
         return ESP_FAIL;
     }
     httpd_resp_set_type(req, "application/json");

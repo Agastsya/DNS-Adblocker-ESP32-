@@ -112,6 +112,7 @@ void dns_server_start(void)
 {
     blocklist_init();
     blocklist_start_cloud_sync();
+    dns_forwarder_init();
     dns_stats_init();
     schedule_init();
     schedule_start_time_sync();

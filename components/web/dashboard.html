@@ -90,6 +90,7 @@
   .saved.show { opacity: 1; }
   footer { margin-top: 3rem; color: var(--tertiary); font-size: 0.82rem; }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
   <div class="wrap">
@@ -110,8 +111,12 @@
 
     <div class="graph">
       <div class="gh"><h3>Activity</h3><span>last 24 hours</span></div>
-      <svg id="chart" viewBox="0 0 480 120" preserveAspectRatio="none"></svg>
-      <div class="legend"><span><i style="background:#c7c7cc"></i>Allowed</span><span><i style="background:#d70015"></i>Blocked</span></div>
+      <canvas id="activityChart" height="150"></canvas>
+    </div>
+
+    <div class="graph">
+      <div class="gh"><h3>Where queries went</h3><span>all time</span></div>
+      <div style="max-width:280px;margin:0 auto"><canvas id="breakdownChart" height="220"></canvas></div>
     </div>
 
     <section>
@@ -176,6 +181,21 @@
         <button id="tz-save">Save timezone</button>
         <span class="saved" id="tz-saved">Saved ✓</span>
       </div>
+
+      <p class="note" style="margin-top:1.8rem">Upstream resolver — where non-blocked lookups are sent. A filtering resolver (AdGuard, Quad9) blocks extra ads/trackers on top of your lists. <b>None of these can block YouTube ads.</b></p>
+      <div class="field">
+        <select id="up-select">
+          <option value="1.1.1.1">Cloudflare 1.1.1.1 (fast, no filtering)</option>
+          <option value="94.140.14.14">AdGuard DNS (blocks ads/trackers)</option>
+          <option value="94.140.14.15">AdGuard Family (ads + adult)</option>
+          <option value="9.9.9.9">Quad9 (blocks malware)</option>
+          <option value="8.8.8.8">Google 8.8.8.8 (no filtering)</option>
+          <option value="__custom__">Custom IP…</option>
+        </select>
+        <input type="text" id="up-custom" placeholder="e.g. 1.2.3.4" style="display:none" autocomplete="off">
+        <button id="up-save">Save resolver</button>
+        <span class="saved" id="up-saved">Saved ✓</span>
+      </div>
     </section>
 
     <footer id="updated">Loading…</footer>
@@ -185,6 +205,7 @@
     const $ = (id) => document.getElementById(id);
     const fmt = (n) => n.toLocaleString();
 
+    let breakdownChart = null;
     async function refresh() {
       try {
         const d = await (await fetch('/api/stats')).json();
@@ -196,23 +217,43 @@
         $('blocked_l').textContent = 'Blocked · ' + pct + '%';
         $('dot').className = 'dot on';
         $('updated').textContent = 'Updated ' + new Date().toLocaleTimeString();
+
+        const vals = [d.blocked, d.cache_hits, d.forwarded];
+        if (!breakdownChart) {
+          breakdownChart = new Chart($('breakdownChart'), {
+            type: 'doughnut',
+            data: { labels: ['Blocked', 'Cached', 'Forwarded'],
+              datasets: [{ data: vals, backgroundColor: ['#d70015', '#1d8a4e', '#0071e3'], borderWidth: 0 }] },
+            options: { plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 12 } } } }, cutout: '62%' }
+          });
+        } else { breakdownChart.data.datasets[0].data = vals; breakdownChart.update('none'); }
       } catch (e) { $('dot').className = 'dot off'; $('updated').textContent = 'Could not reach device'; }
     }
 
+    let activityChart = null;
     async function drawChart() {
       try {
         const data = await (await fetch('/api/history')).json();
-        const max = Math.max(1, ...data.map(b => b.total));
-        const W = 480, H = 120, n = data.length, bw = W / n;
-        let svg = '';
-        data.forEach((b, i) => {
-          const x = i * bw;
-          const th = (b.total / max) * (H - 4);
-          const bh = (b.blocked / max) * (H - 4);
-          svg += `<rect x="${x+0.5}" y="${H-th}" width="${bw-1}" height="${th}" fill="#c7c7cc"/>`;
-          if (bh > 0) svg += `<rect x="${x+0.5}" y="${H-bh}" width="${bw-1}" height="${bh}" fill="#d70015"/>`;
-        });
-        $('chart').innerHTML = svg;
+        const labels = data.map(b => { const h = Math.floor(b.m / 60); return h === 0 ? 'now' : '-' + h + 'h'; });
+        const allowed = data.map(b => Math.max(0, b.total - b.blocked));
+        const blocked = data.map(b => b.blocked);
+        if (!activityChart) {
+          activityChart = new Chart($('activityChart'), {
+            type: 'bar',
+            data: { labels, datasets: [
+              { label: 'Allowed', data: allowed, backgroundColor: '#c7c7cc', stack: 's', borderRadius: 2 },
+              { label: 'Blocked', data: blocked, backgroundColor: '#d70015', stack: 's', borderRadius: 2 } ] },
+            options: { responsive: true, maintainAspectRatio: false,
+              scales: { x: { stacked: true, grid: { display: false }, ticks: { maxTicksLimit: 8, font: { size: 11 } } },
+                        y: { stacked: true, beginAtZero: true, ticks: { precision: 0, font: { size: 11 } }, grid: { color: '#eee' } } },
+              plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 12 } } } } }
+          });
+        } else {
+          activityChart.data.labels = labels;
+          activityChart.data.datasets[0].data = allowed;
+          activityChart.data.datasets[1].data = blocked;
+          activityChart.update('none');
+        }
       } catch (e) {}
     }
 
@@ -271,19 +312,29 @@
     }
     $('sc-add').onclick=()=>{ const d=$('sc-domain').value.trim(),a=$('sc-start').value,b=$('sc-end').value; if(d&&a&&b){ post('/api/schedules',{domain:d,start:toMin(a),end:toMin(b)},renderSchedules); $('sc-domain').value=''; } };
 
-    // Settings (timezone + clock)
+    // Settings (timezone, clock, upstream resolver)
+    function flash(id) { const s=$(id); s.classList.add('show'); setTimeout(()=>s.classList.remove('show'),1500); }
     async function loadSettings() {
       try {
         const s = await (await fetch('/api/settings')).json();
         $('clock').textContent = s.clock; $('clock2').textContent = s.clock; $('tznow').textContent = s.clock;
         $('syncwarn').textContent = s.synced ? '' : '(waiting for internet time…)';
         if (s.timezone) $('tz-select').value = s.timezone;
+        if (s.upstream) {
+          const opts = [...$('up-select').options].map(o => o.value);
+          if (opts.includes(s.upstream)) { $('up-select').value = s.upstream; $('up-custom').style.display='none'; }
+          else { $('up-select').value = '__custom__'; $('up-custom').style.display=''; $('up-custom').value = s.upstream; }
+        }
       } catch(e){}
     }
     $('tz-save').onclick = async () => {
       await post('/api/settings', {timezone:$('tz-select').value}, ()=>{});
-      const s=$('tz-saved'); s.classList.add('show'); setTimeout(()=>s.classList.remove('show'),1500);
-      loadSettings();
+      flash('tz-saved'); loadSettings();
+    };
+    $('up-select').onchange = () => { $('up-custom').style.display = $('up-select').value === '__custom__' ? '' : 'none'; };
+    $('up-save').onclick = async () => {
+      const ip = $('up-select').value === '__custom__' ? $('up-custom').value.trim() : $('up-select').value;
+      if (ip) { await post('/api/settings', {upstream: ip}, ()=>{}); flash('up-saved'); loadSettings(); }
     };
 
     refresh(); drawChart();
