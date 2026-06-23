@@ -38,7 +38,7 @@ jobs:
       - name: Build firmware (ESP-IDF v5.5, ESP32)
         uses: espressif/esp-idf-ci-action@v1
         with:
-          esp_idf_version: v5.5.4
+          esp_idf_version: release-v5.5
           target: esp32
           path: '.'
 
@@ -52,6 +52,13 @@ jobs:
           cp build/ota_data_initial.bin                 site/
           cp build/pocketdns.bin                        site/
           touch site/.nojekyll
+
+      # configure-pages enables Pages for this repo if it isn't already, which
+      # avoids the most common "deployment failed / Pages not enabled" error.
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
