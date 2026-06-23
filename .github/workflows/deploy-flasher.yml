@@ -53,12 +53,11 @@ jobs:
           cp build/pocketdns.bin                        site/
           touch site/.nojekyll
 
-      # configure-pages enables Pages for this repo if it isn't already, which
-      # avoids the most common "deployment failed / Pages not enabled" error.
+      # NOTE: Pages must be enabled once by hand first:
+      #   repo Settings -> Pages -> Source -> "GitHub Actions".
+      # The workflow token can't create the Pages site itself.
       - name: Setup Pages
         uses: actions/configure-pages@v5
-        with:
-          enablement: true
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
