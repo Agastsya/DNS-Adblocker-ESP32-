@@ -6,6 +6,7 @@
 
 #include "esp_log.h"
 #include "esp_http_server.h"
+#include "esp_netif.h"
 #include "dns_stats.h"
 #include "dns_log.h"
 #include "blocklist.h"
@@ -352,6 +353,18 @@ static esp_err_t api_settings_get_handler(httpd_req_t *req)
     cJSON_AddNumberToObject(o, "custom_count", (double)blocklist_custom_count());
     cJSON_AddNumberToObject(o, "blocklist_count", (double)blocklist_active_count());
     cJSON_AddNumberToObject(o, "clients", (double)dns_log_client_count());
+
+    /* The device's own IP - what the user must point their DNS at. Showing
+     * it on the dashboard means a DHCP-changed address (e.g. after a reboot)
+     * is obvious instead of silently breaking everything. */
+    char ipstr[16] = "";
+    esp_netif_t *sta = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    esp_netif_ip_info_t ipinfo;
+    if (sta && esp_netif_get_ip_info(sta, &ipinfo) == ESP_OK) {
+        esp_ip4addr_ntoa(&ipinfo.ip, ipstr, sizeof(ipstr));
+    }
+    cJSON_AddStringToObject(o, "ip", ipstr);
+
     char *json = cJSON_PrintUnformatted(o);
     cJSON_Delete(o);
 

@@ -99,6 +99,10 @@
   .badge.blk { background: rgba(215,0,21,0.12); color: var(--danger); }
   .badge.alw { background: rgba(0,113,227,0.12); color: var(--accent); }
   .badge.cch { background: rgba(29,138,78,0.14); color: var(--ok); }
+  .banner { background: #eaf3ff; border: 1px solid #cfe2ff; color: #0a3d80;
+            border-radius: 12px; padding: 0.8rem 1rem; font-size: 0.92rem;
+            margin-bottom: 1.5rem; line-height: 1.5; }
+  .banner b { font-variant-numeric: tabular-nums; font-size: 1rem; }
   footer { margin-top: 3rem; color: var(--tertiary); font-size: 0.82rem; }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -119,6 +123,9 @@
       <div class="card"><div class="n" id="cache_hits">–</div><div class="l">Cached</div></div>
       <div class="card"><div class="n" id="forwarded">–</div><div class="l">Forwarded</div></div>
     </div>
+
+    <div class="banner" id="dnsbanner">To start blocking, set your devices’ (or your router’s) DNS server to this box:
+      <b id="dev-ip">…</b>. All zeros below just means nothing is pointed here yet.</div>
 
     <div class="graph">
       <div class="gh"><h3>Activity</h3><span>last 24 hours</span></div>
@@ -336,6 +343,7 @@
         const s = await (await fetch('/api/settings')).json();
         $('clock').textContent = s.clock; $('clock2').textContent = s.clock; $('tznow').textContent = s.clock;
         $('syncwarn').textContent = s.synced ? '' : '(waiting for internet time…)';
+        if (s.ip) $('dev-ip').textContent = s.ip;
         if (s.blocklist_count) {
           const dev = s.clients || 0;
           $('sub').textContent = 'Blocking ' + fmt(s.blocklist_count) + ' domains · '
