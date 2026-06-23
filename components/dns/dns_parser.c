@@ -75,6 +75,80 @@ void dns_make_nxdomain_response(uint8_t *buf, int len)
     buf[10] = 0; buf[11] = 0;  /* ARCOUNT */
 }
 
+/* Decode a (possibly compressed) DNS name starting at `pos` into `out` as a
+ * dotted string. Returns the offset just past the name in the sequential
+ * stream (for a compressed name that's the position after the 2-byte
+ * pointer), or -1 on malformed input. */
+static int read_name(const uint8_t *buf, int len, int pos, char *out, size_t out_sz)
+{
+    size_t oi = 0;
+    int jumped = 0;
+    int next = -1;       /* where the sequential parse resumes after a pointer */
+    int hops = 0;
+
+    while (pos >= 0 && pos < len) {
+        uint8_t b = buf[pos];
+        if ((b & 0xC0) == 0xC0) {                 /* compression pointer */
+            if (pos + 1 >= len) return -1;
+            if (!jumped) next = pos + 2;
+            jumped = 1;
+            if (++hops > 20) return -1;           /* guard against pointer loops */
+            pos = ((b & 0x3F) << 8) | buf[pos + 1];
+            continue;
+        }
+        if ((b & 0xC0) != 0) return -1;           /* reserved label type */
+        if (b == 0) { pos += 1; break; }          /* end of name */
+        if (pos + 1 + b > len) return -1;
+        if (oi + (size_t)b + 1 >= out_sz) return -1;
+        if (oi > 0) out[oi++] = '.';
+        memcpy(out + oi, buf + pos + 1, b);
+        oi += b;
+        pos += 1 + b;
+    }
+    out[oi] = '\0';
+    return jumped ? next : pos;
+}
+
+int dns_extract_cname_targets(const uint8_t *buf, int len,
+                              char out[][DNS_MAX_NAME_LEN + 1], int max)
+{
+    if (buf == NULL || len < DNS_HEADER_LEN || max <= 0) {
+        return 0;
+    }
+    int qdcount = (buf[4] << 8) | buf[5];
+    int ancount = (buf[6] << 8) | buf[7];
+
+    int pos = DNS_HEADER_LEN;
+    char tmp[DNS_MAX_NAME_LEN + 1];
+
+    /* Skip the question section (QNAME + QTYPE + QCLASS each). */
+    for (int i = 0; i < qdcount; i++) {
+        pos = read_name(buf, len, pos, tmp, sizeof(tmp));
+        if (pos < 0 || pos + 4 > len) return 0;
+        pos += 4;
+    }
+
+    int count = 0;
+    for (int i = 0; i < ancount && count < max; i++) {
+        pos = read_name(buf, len, pos, tmp, sizeof(tmp));   /* record owner */
+        if (pos < 0 || pos + 10 > len) break;
+        int type   = (buf[pos] << 8) | buf[pos + 1];
+        int rdlen  = (buf[pos + 8] << 8) | buf[pos + 9];
+        int rdpos  = pos + 10;
+        if (rdpos + rdlen > len) break;
+
+        if (type == 5) {   /* CNAME: RDATA is the target name */
+            char target[DNS_MAX_NAME_LEN + 1];
+            if (read_name(buf, len, rdpos, target, sizeof(target)) >= 0 && target[0] != '\0') {
+                strlcpy(out[count], target, DNS_MAX_NAME_LEN + 1);
+                count++;
+            }
+        }
+        pos = rdpos + rdlen;
+    }
+    return count;
+}
+
 const char *dns_qtype_name(uint16_t qtype)
 {
     switch (qtype) {

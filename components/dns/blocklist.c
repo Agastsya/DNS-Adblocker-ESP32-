@@ -47,6 +47,21 @@ static const char *s_blocklist[] = {
     "uidapi.com",
     "exoclick.com",
     "2giga.link",
+    /* --- SSPs / header-bidding confirmed loading on NDTV & India Today
+     * (HAR analysis): the ad slots and cookie-sync that get past lists --- */
+    "pubmatic.com",
+    "rubiconproject.com",
+    "casalemedia.com",
+    "openx.net",
+    "bidswitch.net",
+    "360yield.com",
+    "yieldmo.com",
+    "quantserve.com",
+    "confiant-integrations.net",
+    "tblcontent.com",               /* Taboola content CDN */
+    "syndication.twitter.com",      /* embed telemetry (NOT platform.twitter.com) */
+    "syndication.x.com",
+    "cdn.syndication.twimg.com",
     /* --- affiliate / partner tracking --- */
     "linksynergy.com",
     "impact.com",

@@ -106,6 +106,27 @@ static int resolve_query(const uint8_t *req, int req_len, uint32_t client_ip,
 
     out_len = dns_forward_query(req, req_len, resp, resp_cap);
     if (out_len > 0) {
+        /* CNAME uncloaking: a tracker often hides behind a first-party-looking
+         * name (metrics.publisher.com) that CNAMEs to its real ad host. If any
+         * name in the answer's CNAME chain is on the blocklist, drop the whole
+         * answer - catching what a plain match on the queried name misses. */
+        char cnames[6][DNS_MAX_NAME_LEN + 1];
+        int nc = dns_extract_cname_targets(resp, out_len, cnames, 6);
+        for (int i = 0; i < nc; i++) {
+            if (blocklist_is_blocked(cnames[i])) {
+                dns_stats_record_blocked();
+                dns_log_record(query.qname, client_ip, DNS_LOG_BLOCKED);
+                int n = 0;
+                if (req_len <= resp_cap) {
+                    memcpy(resp, req, req_len);
+                    dns_make_nxdomain_response(resp, req_len);
+                    n = req_len;
+                }
+                ESP_LOGI(TAG, "CNAME-blocked %s (chains to %s)", query.qname, cnames[i]);
+                dns_stats_checkpoint();
+                return n;
+            }
+        }
         dns_stats_record_forwarded();
         dns_log_record(query.qname, client_ip, DNS_LOG_ALLOWED);
         dns_cache_store(query.qname, query.qtype, resp, out_len);
