@@ -53,39 +53,53 @@ int dns_forwarder_set_upstream(const char *ip)
     return 0;
 }
 
-int dns_forward_query(const uint8_t *query, int query_len,
-                       uint8_t *response, int response_buf_len)
+/* Send the query to one resolver IP and wait (briefly) for a reply.
+ * Returns the response length, or -1 on timeout/error. */
+static int try_resolver(const char *ip, const uint8_t *query, int query_len,
+                         uint8_t *response, int response_buf_len)
 {
     int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
     if (sock < 0) {
-        ESP_LOGE(TAG, "Could not create upstream socket: errno %d", errno);
         return -1;
     }
-
-    /* Upstream may not answer at all (dropped packet, outage) - without a
-     * receive timeout this task would block forever and the proxy would
-     * wedge on the very first lost reply. */
     struct timeval timeout = { .tv_sec = 2, .tv_usec = 0 };
     setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
 
-    struct sockaddr_in upstream_addr = {
+    struct sockaddr_in addr = {
         .sin_family = AF_INET,
         .sin_port = htons(UPSTREAM_DNS_PORT),
-        .sin_addr.s_addr = inet_addr(s_upstream),
+        .sin_addr.s_addr = inet_addr(ip),
     };
-
-    if (sendto(sock, query, query_len, 0,
-               (struct sockaddr *)&upstream_addr, sizeof(upstream_addr)) < 0) {
-        ESP_LOGW(TAG, "sendto upstream failed: errno %d", errno);
+    if (sendto(sock, query, query_len, 0, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
         close(sock);
         return -1;
     }
-
     int len = recvfrom(sock, response, response_buf_len, 0, NULL, NULL);
-    if (len < 0) {
-        ESP_LOGW(TAG, "No response from upstream %s (errno %d)", s_upstream, errno);
-    }
-
     close(sock);
     return len;
+}
+
+int dns_forward_query(const uint8_t *query, int query_len,
+                       uint8_t *response, int response_buf_len)
+{
+    /* Try the configured resolver first. If it doesn't answer (bad/slow
+     * upstream, outage), fall back to public resolvers so a misconfigured
+     * upstream can never take the whole network's DNS down. */
+    int len = try_resolver(s_upstream, query, query_len, response, response_buf_len);
+    if (len > 0) {
+        return len;
+    }
+
+    static const char *fallbacks[] = { "1.1.1.1", "8.8.8.8" };
+    for (int i = 0; i < 2; i++) {
+        if (strcmp(s_upstream, fallbacks[i]) == 0) {
+            continue;  /* already tried it as the primary */
+        }
+        ESP_LOGW(TAG, "Upstream %s didn't answer - falling back to %s", s_upstream, fallbacks[i]);
+        len = try_resolver(fallbacks[i], query, query_len, response, response_buf_len);
+        if (len > 0) {
+            return len;
+        }
+    }
+    return -1;
 }

@@ -111,12 +111,12 @@
 
     <div class="graph">
       <div class="gh"><h3>Activity</h3><span>last 24 hours</span></div>
-      <canvas id="activityChart" height="150"></canvas>
+      <div style="position:relative; height:170px; width:100%;"><canvas id="activityChart"></canvas></div>
     </div>
 
     <div class="graph">
       <div class="gh"><h3>Where queries went</h3><span>all time</span></div>
-      <div style="max-width:280px;margin:0 auto"><canvas id="breakdownChart" height="220"></canvas></div>
+      <div style="position:relative; height:240px; max-width:260px; margin:0 auto;"><canvas id="breakdownChart"></canvas></div>
     </div>
 
     <section>
@@ -224,7 +224,8 @@
             type: 'doughnut',
             data: { labels: ['Blocked', 'Cached', 'Forwarded'],
               datasets: [{ data: vals, backgroundColor: ['#d70015', '#1d8a4e', '#0071e3'], borderWidth: 0 }] },
-            options: { plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 12 } } } }, cutout: '62%' }
+            options: { responsive: true, maintainAspectRatio: false, cutout: '62%',
+              plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 12 } } } } }
           });
         } else { breakdownChart.data.datasets[0].data = vals; breakdownChart.update('none'); }
       } catch (e) { $('dot').className = 'dot off'; $('updated').textContent = 'Could not reach device'; }
