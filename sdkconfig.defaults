@@ -32,6 +32,13 @@ CONFIG_LOG_DEFAULT_LEVEL_INFO=y
 # --- FreeRTOS: give app_main room to grow as we add modules ----------------
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
 
+# --- lwIP: bigger UDP receive mailbox --------------------------------------
+# A browser opens dozens of DNS lookups at once when loading a page. The
+# default 6-deep UDP mailbox overflows under that burst and silently drops
+# queries, which shows up as "some sites just keep loading". The DNS server
+# also uses a worker pool to drain this fast, but give the kernel headroom.
+CONFIG_LWIP_UDP_RECVMBOX_SIZE=32
+
 # ==========================================================================
 #  >>> EDIT THESE TWO LINES with your home Wi-Fi, then build & flash. <<<
 #

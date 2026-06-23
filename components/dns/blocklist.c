@@ -15,10 +15,16 @@
 
 static const char *TAG = "blocklist";
 
-/* Small built-in seed list of well-known ad/tracking domains. Used until
- * the first successful cloud sync below replaces it with the real list,
- * and as a fallback if that sync ever fails with nothing cached yet. */
+/* Built-in, always-on list of well-known ad/tracking/telemetry domains.
+ * This is checked on EVERY query (see blocklist_is_blocked), not just as a
+ * fallback before the cloud list loads - so these are guaranteed blocked
+ * regardless of what the daily cloud sync happens to contain. Matching is
+ * suffix-based, so an entry like "taboola.com" also blocks every subdomain
+ * (cdn.taboola.com, trc.taboola.com, ...). Keep only domains that serve
+ * ads/tracking/telemetry and nothing a real page needs - blocking a domain
+ * a site depends on makes that site hang, which is worse than an ad. */
 static const char *s_blocklist[] = {
+    /* --- core ad networks / analytics --- */
     "doubleclick.net",
     "googlesyndication.com",
     "googleadservices.com",
@@ -29,6 +35,40 @@ static const char *s_blocklist[] = {
     "ads.yahoo.com",
     "adnxs.com",
     "criteo.com",
+    /* --- recommendation/content ads --- */
+    "taboola.com",
+    "teads.tv",
+    "outbrain.com",
+    /* --- ad verification / adtech / DSPs --- */
+    "adsafeprotected.com",
+    "id5-sync.com",
+    "thetradedesk.com",
+    "uidapi.com",
+    "exoclick.com",
+    "2giga.link",
+    /* --- affiliate / partner tracking --- */
+    "linksynergy.com",
+    "impact.com",
+    "partnerstack.com",
+    "zenaps.com",
+    "refersion.com",
+    /* --- attribution / product analytics / telemetry --- */
+    "bnc.lt",                       /* Branch deep-link attribution */
+    "clevertap-prod.com",
+    "track.hubspot.com",
+    "widget.intercom.io",
+    /* --- crash/performance monitoring (data-collection endpoints) --- */
+    "sentry-cdn.com",
+    "getsentry.com",
+    "nr-data.net",                  /* New Relic */
+    "bugsnag.com",
+    /* --- social tracking pixels/SDKs (not the apps themselves) --- */
+    "connect.facebook.net",         /* FB pixel/SDK; does NOT block facebook.com */
+    "s.youtube.com",                /* YT logging; does NOT block playback */
+    /* --- OS / device telemetry --- */
+    "vortex.data.microsoft.com",    /* Windows telemetry */
+    "xp.apple.com",                 /* Apple analytics */
+    "ngfts.lge.com",                /* LG smart-TV telemetry */
 };
 #define BLOCKLIST_COUNT (sizeof(s_blocklist) / sizeof(s_blocklist[0]))
 
@@ -782,15 +822,17 @@ bool blocklist_is_blocked(const char *domain)
         }
     }
 
-    /* Cloud blocklist (flash hash index) once it's loaded; until then,
-     * fall back to the small built-in seed list. */
-    if (s_idx_ready) {
-        return index_blocks_domain(domain);
-    }
+    /* Built-in always-on list: enforced on every query, even after the
+     * cloud index loads, so these can never slip through. */
     for (size_t i = 0; i < BLOCKLIST_COUNT; i++) {
         if (domain_matches(domain, s_blocklist[i])) {
             return true;
         }
+    }
+
+    /* Cloud blocklist (flash hash index) once it's loaded. */
+    if (s_idx_ready) {
+        return index_blocks_domain(domain);
     }
     return false;
 }

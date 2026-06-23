@@ -2,6 +2,11 @@
 
 #include <stdint.h>
 
+/* Create the lock that guards the cache. Must be called once, before the
+ * DNS worker tasks start, since several of them read/write the cache
+ * concurrently. */
+void dns_cache_init(void);
+
 /* Look up a cached response for (qname, qtype). On a hit, copies it into
  * out_response with the ID field rewritten to match query_id (so it
  * matches whichever client just asked), and returns its length. Returns

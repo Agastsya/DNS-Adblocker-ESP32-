@@ -6,12 +6,25 @@
 
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 
 static const char *TAG = "dns_cache";
 
 #define DNS_CACHE_SIZE          32
 #define DNS_CACHE_MAX_RESPONSE  512
 #define DNS_CACHE_MAX_NAME      255
+
+/* Guards s_cache/s_next_evict: the DNS worker pool reads and writes the
+ * cache from several tasks at once. */
+static SemaphoreHandle_t s_cache_lock = NULL;
+
+void dns_cache_init(void)
+{
+    if (s_cache_lock == NULL) {
+        s_cache_lock = xSemaphoreCreateMutex();
+    }
+}
 
 typedef struct {
     bool     in_use;
@@ -99,7 +112,9 @@ int dns_cache_lookup(const char *qname, uint16_t qtype, uint16_t query_id,
                       uint8_t *out_response, int out_buf_len)
 {
     int64_t now = esp_timer_get_time();
+    int result = -1;
 
+    if (s_cache_lock) xSemaphoreTake(s_cache_lock, portMAX_DELAY);
     for (int i = 0; i < DNS_CACHE_SIZE; i++) {
         dns_cache_entry_t *e = &s_cache[i];
         if (!e->in_use || e->qtype != qtype) {
@@ -113,14 +128,16 @@ int dns_cache_lookup(const char *qname, uint16_t qtype, uint16_t query_id,
             continue;
         }
         if (e->response_len > out_buf_len) {
-            return -1;
+            break;
         }
         memcpy(out_response, e->response, e->response_len);
         out_response[0] = query_id >> 8;
         out_response[1] = query_id & 0xFF;
-        return e->response_len;
+        result = e->response_len;
+        break;
     }
-    return -1;
+    if (s_cache_lock) xSemaphoreGive(s_cache_lock);
+    return result;
 }
 
 void dns_cache_store(const char *qname, uint16_t qtype,
@@ -138,6 +155,7 @@ void dns_cache_store(const char *qname, uint16_t qtype,
         return;  /* nothing worth caching (no answers, or a 0-TTL record) */
     }
 
+    if (s_cache_lock) xSemaphoreTake(s_cache_lock, portMAX_DELAY);
     dns_cache_entry_t *e = &s_cache[s_next_evict];
     s_next_evict = (s_next_evict + 1) % DNS_CACHE_SIZE;
 
@@ -148,6 +166,7 @@ void dns_cache_store(const char *qname, uint16_t qtype,
     e->response_len = response_len;
     e->expires_at_us = esp_timer_get_time() + ((int64_t)ttl * 1000000);
     e->in_use = true;
+    if (s_cache_lock) xSemaphoreGive(s_cache_lock);
 
     ESP_LOGI(TAG, "Cached %s (%u) for %ld s", qname, qtype, (long)ttl);
 }

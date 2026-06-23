@@ -62,7 +62,7 @@ static int try_resolver(const char *ip, const uint8_t *query, int query_len,
     if (sock < 0) {
         return -1;
     }
-    struct timeval timeout = { .tv_sec = 2, .tv_usec = 0 };
+    struct timeval timeout = { .tv_sec = 1, .tv_usec = 500000 };
     setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
 
     struct sockaddr_in addr = {
