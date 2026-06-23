@@ -467,6 +467,11 @@ void web_server_start(void)
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.max_uri_handlers = 20;   /* default 8 is too few for our REST API */
     config.stack_size = 8192;       /* JSON building + larger list responses */
+    /* The dashboard polls several endpoints every couple of seconds. Without
+     * this, once max_open_sockets fills the server REFUSES new connections,
+     * so whichever poll loses the race (often the live feed) silently stops
+     * updating. Recycle the least-recently-used connection instead. */
+    config.lru_purge_enable = true;
     httpd_handle_t server = NULL;
 
 #if CONFIG_POCKETDNS_WEB_AUTH_ENABLE

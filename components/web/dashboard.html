@@ -362,26 +362,38 @@
     // Live activity feed
     function fmtAgo(s) { s = Math.max(0, s|0); if (s < 1) return 'now'; if (s < 60) return s + 's ago';
       const m = Math.floor(s/60); if (m < 60) return m + 'm ago'; return Math.floor(m/60) + 'h ago'; }
+    function liveMsg(text) {
+      const ul = $('live-list'); ul.innerHTML = '';
+      const li = document.createElement('li'); li.className = 'none'; li.textContent = text;
+      ul.appendChild(li);
+    }
     async function loadRecent() {
+      let items;
       try {
-        const items = await (await fetch('/api/recent')).json();
-        const ul = $('live-list'); ul.innerHTML = '';
-        if (!items.length) {
-          const li = document.createElement('li'); li.className = 'none';
-          li.textContent = 'No lookups yet — point a device’s DNS at this box and browse the web.';
-          ul.appendChild(li); return;
-        }
-        for (const it of items) {
-          const li = document.createElement('li');
-          const cls = it.act === 1 ? 'blk' : (it.act === 2 ? 'cch' : 'alw');
-          const lbl = it.act === 1 ? 'Blocked' : (it.act === 2 ? 'Cached' : 'Allowed');
-          const b = document.createElement('span'); b.className = 'badge ' + cls; b.textContent = lbl;
-          const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = it.name || '(root)';
-          const ip = document.createElement('span'); ip.className = 'cip'; ip.textContent = it.ip;
-          const ago = document.createElement('span'); ago.className = 'ago'; ago.textContent = fmtAgo(it.ago);
-          li.append(b, nm, ip, ago); ul.appendChild(li);
-        }
-      } catch (e) {}
+        const r = await fetch('/api/recent');
+        if (!r.ok) throw new Error('http ' + r.status);
+        items = await r.json();
+      } catch (e) {
+        // endpoint missing/unreachable -> almost always old firmware
+        liveMsg('⚠ Live log unavailable — reflash to the latest firmware, then reload.');
+        return;
+      }
+      if (!items.length) {
+        // endpoint works but nothing has been asked: DNS isn't routed here yet
+        liveMsg('No lookups yet — no device is sending DNS to this box. Set this device’s IP as your DNS, then browse.');
+        return;
+      }
+      const ul = $('live-list'); ul.innerHTML = '';
+      for (const it of items) {
+        const li = document.createElement('li');
+        const cls = it.act === 1 ? 'blk' : (it.act === 2 ? 'cch' : 'alw');
+        const lbl = it.act === 1 ? 'Blocked' : (it.act === 2 ? 'Cached' : 'Allowed');
+        const b = document.createElement('span'); b.className = 'badge ' + cls; b.textContent = lbl;
+        const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = it.name || '(root)';
+        const ip = document.createElement('span'); ip.className = 'cip'; ip.textContent = it.ip;
+        const ago = document.createElement('span'); ago.className = 'ago'; ago.textContent = fmtAgo(it.ago);
+        li.append(b, nm, ip, ago); ul.appendChild(li);
+      }
     }
 
     refresh(); drawChart(); loadRecent();
