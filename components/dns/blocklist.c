@@ -151,13 +151,19 @@ static size_t s_custom_count = 0;
  * -> "a.b.tracker.com", "b.tracker.com", "tracker.com") and check each in
  * its bucket, so blocking "tracker.com" also blocks every subdomain.
  * ------------------------------------------------------------------------ */
-#define BLOCKLIST_URL    "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/light.txt"
+/* Hagezi "Pro": the recommended daily-driver list (~145k ad/tracking/
+ * telemetry domains) - far more aggressive than "light" (~80k). It fits
+ * because the littlefs partition was enlarged to 1.44 MB (see partitions.csv). */
+#define BLOCKLIST_URL    "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/pro.txt"
 #define IDX_PATH         "/littlefs/blockidx.bin"
 #define IDX_TMP_PATH     "/littlefs/blockidx.tmp"
 #define RAW_TMP_PATH     "/littlefs/blockraw.tmp"
-#define NUM_BUCKETS      64u    /* power of two: bucket = hash & (NUM_BUCKETS-1) */
+#define NUM_BUCKETS      256u   /* power of two: bucket = hash & (NUM_BUCKETS-1).
+                                 * More buckets => smaller per-bucket malloc at
+                                 * build time and fewer flash reads per lookup. */
 #define IDX_HEADER_BYTES (NUM_BUCKETS * (uint32_t)sizeof(uint32_t))
-#define MAX_DOMAINS      80000u /* cap so raw+index files fit the 832KB partition */
+#define MAX_DOMAINS      145000u /* cap so raw+index (~8 B/domain peak) fit the
+                                  * 1.44 MB littlefs partition with headroom */
 #define SYNC_INTERVAL_MS (24UL * 60 * 60 * 1000)  /* once a day */
 
 /* In-RAM index header: per-bucket entry count + byte offset of each
@@ -349,7 +355,7 @@ static bool download_to_raw(void)
     esp_http_client_config_t config = {
         .url = BLOCKLIST_URL,
         .event_handler = http_event_handler,
-        .timeout_ms = 60000,
+        .timeout_ms = 120000,   /* the Pro list is several MB; allow slow links */
         .crt_bundle_attach = esp_crt_bundle_attach,
         .buffer_size = 2048,
         .user_agent = "PocketDNS",
@@ -430,9 +436,9 @@ static void do_sync(void)
     }
 
     /* Drop the old index before building the new one: the raw file and the
-     * new index together are ~640KB, and keeping the old index too would
-     * overflow the 832KB partition. Lookups fall back to the small seed
-     * list during the brief rebuild. */
+     * new index together are ~1.16MB, and keeping the old index too would
+     * overflow the 1.44MB partition. Lookups fall back to the built-in
+     * always-on list during the brief rebuild. */
     xSemaphoreTake(s_idx_lock, portMAX_DELAY);
     if (s_idx_fp) { fclose(s_idx_fp); s_idx_fp = NULL; }
     s_idx_ready = false;

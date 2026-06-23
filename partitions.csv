@@ -12,6 +12,11 @@
 #  - We reserve TWO app slots (ota_0 / ota_1) so a future OTA update can be
 #    written to the inactive slot and swapped atomically. If it bricks, the
 #    bootloader rolls back. That safety needs the second slot to exist now.
+#    Each slot is 0x130000 (1.25 MB) - the app is ~1.1 MB, so this leaves
+#    headroom while freeing flash for the blocklist below.
+#  - littlefs is 0x170000 (1.44 MB), enlarged from the original 832 KB so the
+#    on-flash hash index can hold the bigger Hagezi "Pro" blocklist (~145k
+#    domains). This is the max we can give it without dropping an OTA slot.
 #  - The data partition is labelled "littlefs" but uses subtype "spiffs".
 #    Why: the LittleFS component matches the partition by its LABEL, not its
 #    subtype, and "spiffs" is a subtype every ESP-IDF version accepts. This
@@ -25,7 +30,7 @@
 nvs,        data, nvs,      0x9000,   0x6000,
 otadata,    data, ota,      0xf000,   0x2000,
 phy_init,   data, phy,      0x11000,  0x1000,
-ota_0,      app,  ota_0,    0x20000,  0x180000,
-ota_1,      app,  ota_1,    0x1A0000, 0x180000,
-littlefs,   data, spiffs,   0x320000, 0xD0000,
+ota_0,      app,  ota_0,    0x20000,  0x130000,
+ota_1,      app,  ota_1,    0x150000, 0x130000,
+littlefs,   data, spiffs,   0x280000, 0x170000,
 coredump,   data, coredump, 0x3F0000, 0x10000,
