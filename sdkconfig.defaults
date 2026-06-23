@@ -39,6 +39,10 @@ CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
 # also uses a worker pool to drain this fast, but give the kernel headroom.
 CONFIG_LWIP_UDP_RECVMBOX_SIZE=32
 
+# More socket descriptors: UDP listener + per-worker upstream forwards + the
+# TCP DNS listener and its connections + the web server can run concurrently.
+CONFIG_LWIP_MAX_SOCKETS=16
+
 # ==========================================================================
 #  >>> EDIT THESE TWO LINES with your home Wi-Fi, then build & flash. <<<
 #
