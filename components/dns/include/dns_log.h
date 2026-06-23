@@ -27,3 +27,7 @@ void dns_log_record(const char *qname, uint32_t client_ip, dns_log_action_t acti
  * [{"name":"x.com","ip":"192.168.1.5","ago":3,"act":1}, ...].
  * Caller must cJSON_free() the result. */
 char *dns_log_to_json(void);
+
+/* Number of distinct client IPs seen among the recent queries - a quick
+ * "how many devices are actually using this box" indicator for the UI. */
+uint32_t dns_log_client_count(void);

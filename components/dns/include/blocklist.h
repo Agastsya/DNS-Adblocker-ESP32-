@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stdint.h>
 #include "esp_err.h"
 
 /* Load the block/allow lists. For now this is a small built-in seed list;
@@ -15,6 +16,10 @@ bool blocklist_is_blocked(const char *domain);
  * and then once every 24h, replacing the in-memory list on success and
  * leaving the existing one in place on failure. Call once at startup. */
 void blocklist_start_cloud_sync(void);
+
+/* Number of domains in the active cloud blocklist index, or 0 if it
+ * hasn't been built/loaded yet (the built-in list is still in force). */
+uint32_t blocklist_active_count(void);
 
 /* User whitelist management (persisted to LittleFS). add/remove return
  * true on success; add is idempotent. to_json returns a malloc'd JSON

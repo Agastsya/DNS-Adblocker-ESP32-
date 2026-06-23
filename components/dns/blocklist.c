@@ -173,6 +173,7 @@ static size_t s_custom_count = 0;
 static uint32_t s_bucket_count[NUM_BUCKETS];
 static uint32_t s_bucket_off[NUM_BUCKETS];
 static bool     s_idx_ready = false;
+static uint32_t s_idx_total = 0;            /* domains in the loaded index */
 static FILE    *s_idx_fp = NULL;             /* persistent read handle into IDX_PATH */
 static SemaphoreHandle_t s_idx_lock = NULL;
 
@@ -237,9 +238,23 @@ static bool index_load_locked(void)
         total += s_bucket_count[b];
     }
     s_idx_fp = f;
+    s_idx_total = total;
     s_idx_ready = true;
     ESP_LOGI(TAG, "Cloud blocklist active: %u domains (hash index on flash)", (unsigned)total);
     return true;
+}
+
+uint32_t blocklist_active_count(void)
+{
+    uint32_t n = 0;
+    if (s_idx_lock) {
+        xSemaphoreTake(s_idx_lock, portMAX_DELAY);
+    }
+    n = s_idx_ready ? s_idx_total : 0;
+    if (s_idx_lock) {
+        xSemaphoreGive(s_idx_lock);
+    }
+    return n;
 }
 
 /* Binary-search one hash in its bucket on flash. Call with s_idx_lock held. */

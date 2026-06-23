@@ -336,6 +336,11 @@
         const s = await (await fetch('/api/settings')).json();
         $('clock').textContent = s.clock; $('clock2').textContent = s.clock; $('tznow').textContent = s.clock;
         $('syncwarn').textContent = s.synced ? '' : '(waiting for internet time…)';
+        if (s.blocklist_count) {
+          const dev = s.clients || 0;
+          $('sub').textContent = 'Blocking ' + fmt(s.blocklist_count) + ' domains · '
+            + dev + ' device' + (dev === 1 ? '' : 's') + ' active';
+        }
         if (s.timezone) $('tz-select').value = s.timezone;
         if (s.upstream) {
           const opts = [...$('up-select').options].map(o => o.value);

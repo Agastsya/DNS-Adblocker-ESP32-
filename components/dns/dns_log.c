@@ -83,3 +83,27 @@ char *dns_log_to_json(void)
     cJSON_Delete(arr);
     return json;
 }
+
+uint32_t dns_log_client_count(void)
+{
+    uint32_t ips[LOG_CAPACITY];
+    uint32_t distinct = 0;
+
+    if (s_lock) {
+        xSemaphoreTake(s_lock, portMAX_DELAY);
+    }
+    for (int i = 0; i < s_count; i++) {
+        uint32_t ip = s_log[i].ip;
+        bool seen = false;
+        for (uint32_t j = 0; j < distinct; j++) {
+            if (ips[j] == ip) { seen = true; break; }
+        }
+        if (!seen) {
+            ips[distinct++] = ip;
+        }
+    }
+    if (s_lock) {
+        xSemaphoreGive(s_lock);
+    }
+    return distinct;
+}

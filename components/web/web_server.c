@@ -350,6 +350,8 @@ static esp_err_t api_settings_get_handler(httpd_req_t *req)
     cJSON_AddBoolToObject(o, "synced", synced);
     cJSON_AddStringToObject(o, "upstream", upstream);
     cJSON_AddNumberToObject(o, "custom_count", (double)blocklist_custom_count());
+    cJSON_AddNumberToObject(o, "blocklist_count", (double)blocklist_active_count());
+    cJSON_AddNumberToObject(o, "clients", (double)dns_log_client_count());
     char *json = cJSON_PrintUnformatted(o);
     cJSON_Delete(o);
 
