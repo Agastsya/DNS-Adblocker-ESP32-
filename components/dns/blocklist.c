@@ -80,6 +80,14 @@ static const char *s_blocklist[] = {
     "3lift.com",                    /* TripleLift */
     "revcontent.com",
     "adskeeper.com",
+    "adcolony.com",                 /* mobile ad network */
+    "samsungads.com",
+    "iadsdk.apple.com",             /* Apple Search Ads SDK */
+    /* --- session-recording / behaviour analytics --- */
+    "hotjar.com",
+    "hotjar.io",
+    "mouseflow.com",
+    "luckyorange.com",
     /* --- encrypted-DNS (DoH/DoT) bypass: if a browser/OS resolves one of
      * these provider hostnames to start encrypted DNS, NXDOMAIN forces it
      * to fall back to plain DNS - which is THIS server, so it can't sneak
