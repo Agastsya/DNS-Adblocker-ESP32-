@@ -1,5 +1,6 @@
 #include "blocklist.h"
 
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -829,6 +830,86 @@ esp_err_t blocklist_init(void)
     return ESP_OK;
 }
 
+/* --------------------------------------------------------------------------
+ * Pattern blocking: instead of matching whole domains, block on substrings
+ * and on ad-style subdomain labels. This catches every present and future
+ * host an ad network uses (trc.taboola.com, cdn.taboolasyndication.com,
+ * ads.anything.com, ...) without having to enumerate them.
+ * ------------------------------------------------------------------------ */
+
+/* Brand tokens that never appear in legitimate domains, so a plain
+ * (case-insensitive) substring match anywhere in the name is safe. */
+static const char *s_block_keywords[] = {
+    "taboola",
+    "doubleclick",
+    "googlesyndication",
+    "googleadservices",
+    "adnxs",
+    "outbrain",
+    "criteo",
+    "adcolony",
+    "scorecardresearch",
+    "moatads",
+    "adsrvr",            /* The Trade Desk */
+    "adsafeprotected",
+    "2mdn",              /* Google ad serving */
+    "zedo",
+    "adroll",
+};
+#define BLOCK_KEYWORD_COUNT (sizeof(s_block_keywords) / sizeof(s_block_keywords[0]))
+
+/* Case-insensitive "does haystack contain needle" (needle must be lower-case). */
+static bool ci_contains(const char *hay, const char *needle)
+{
+    size_t nlen = strlen(needle);
+    if (nlen == 0) {
+        return false;
+    }
+    for (; *hay; hay++) {
+        size_t i = 0;
+        while (i < nlen && hay[i] &&
+               (char)tolower((unsigned char)hay[i]) == needle[i]) {
+            i++;
+        }
+        if (i == nlen) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* True if any SUB-domain label (i.e. not the registered "name.tld" itself)
+ * is an ad label: exactly "ad", or anything starting with "ads"
+ * (ads, adserver, adservice, adsystem, adsense, ...). Only sub-domain
+ * labels are checked, so registered names like adobe.com / adidas.com /
+ * adp.com are never matched, but ads.cnn.com, ad.doubleclick.net and
+ * adservice.google.com all are. */
+static bool has_ad_subdomain_label(const char *domain)
+{
+    size_t labels = 1;
+    for (const char *q = domain; *q; q++) {
+        if (*q == '.') labels++;
+    }
+    if (labels < 3) {
+        return false;  /* no label sits in front of the registered name.tld */
+    }
+
+    const char *p = domain;
+    size_t idx = 0;
+    while (idx + 2 < labels) {       /* stop before the last two labels */
+        const char *dot = strchr(p, '.');
+        size_t len = dot ? (size_t)(dot - p) : strlen(p);
+        if ((len == 2 && strncasecmp(p, "ad", 2) == 0) ||
+            (len >= 3 && strncasecmp(p, "ads", 3) == 0)) {
+            return true;
+        }
+        if (!dot) break;
+        p = dot + 1;
+        idx++;
+    }
+    return false;
+}
+
 bool blocklist_is_blocked(const char *domain)
 {
     /* Whitelist wins over everything. */
@@ -858,6 +939,18 @@ bool blocklist_is_blocked(const char *domain)
         if (domain_matches(domain, s_blocklist[i])) {
             return true;
         }
+    }
+
+    /* Pattern blocking: ad-network brand tokens anywhere in the name, and
+     * ad-style subdomain labels (ads./ad./adservice. ...). Catches hosts
+     * not spelled out in any list. Whitelist above still overrides these. */
+    for (size_t i = 0; i < BLOCK_KEYWORD_COUNT; i++) {
+        if (ci_contains(domain, s_block_keywords[i])) {
+            return true;
+        }
+    }
+    if (has_ad_subdomain_label(domain)) {
+        return true;
     }
 
     /* Cloud blocklist (flash hash index) once it's loaded. */
