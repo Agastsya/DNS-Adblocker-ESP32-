@@ -4,6 +4,7 @@
 #include "blocklist.h"
 #include "dns_cache.h"
 #include "dns_stats.h"
+#include "dns_log.h"
 #include "schedule.h"
 
 #include <errno.h>
@@ -71,8 +72,11 @@ static void handle_query(const dns_work_t *work)
     const struct sockaddr *dst = (const struct sockaddr *)&work->src;
     socklen_t dst_len = work->src_len;
 
+    uint32_t client_ip = work->src.sin_addr.s_addr;
+
     if (blocklist_is_blocked(query.qname) || schedule_is_blocked_now(query.qname)) {
         dns_stats_record_blocked();
+        dns_log_record(query.qname, client_ip, DNS_LOG_BLOCKED);
         uint8_t resp[DNS_RX_BUF_LEN];
         memcpy(resp, work->data, work->len);
         dns_make_nxdomain_response(resp, work->len);
@@ -88,6 +92,7 @@ static void handle_query(const dns_work_t *work)
                                         response_buffer, sizeof(response_buffer));
     if (response_len > 0) {
         dns_stats_record_cache_hit();
+        dns_log_record(query.qname, client_ip, DNS_LOG_CACHED);
         sendto(s_sock, response_buffer, response_len, 0, dst, dst_len);
         ESP_LOGI(TAG, "Cache hit for %s - served %d bytes to %s:%d",
                  query.qname, response_len,
@@ -100,6 +105,7 @@ static void handle_query(const dns_work_t *work)
                                      response_buffer, sizeof(response_buffer));
     if (response_len > 0) {
         dns_stats_record_forwarded();
+        dns_log_record(query.qname, client_ip, DNS_LOG_ALLOWED);
         dns_cache_store(query.qname, query.qtype, response_buffer, response_len);
         sendto(s_sock, response_buffer, response_len, 0, dst, dst_len);
         ESP_LOGI(TAG, "Forwarded %d-byte reply for %s to %s:%d",
@@ -183,6 +189,7 @@ void dns_server_start(void)
     blocklist_start_cloud_sync();
     dns_forwarder_init();
     dns_cache_init();
+    dns_log_init();
     dns_stats_init();
     schedule_init();
     schedule_start_time_sync();

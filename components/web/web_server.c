@@ -7,6 +7,7 @@
 #include "esp_log.h"
 #include "esp_http_server.h"
 #include "dns_stats.h"
+#include "dns_log.h"
 #include "blocklist.h"
 #include "schedule.h"
 #include "dns_forwarder.h"
@@ -314,6 +315,23 @@ static esp_err_t api_history_get_handler(httpd_req_t *req)
     return err;
 }
 
+/* GET /api/recent -> newest-first JSON array of recent queries */
+static esp_err_t api_recent_get_handler(httpd_req_t *req)
+{
+    if (!check_auth(req)) {
+        return ESP_OK;
+    }
+    char *json = dns_log_to_json();
+    if (json == NULL) {
+        httpd_resp_send_500(req);
+        return ESP_FAIL;
+    }
+    httpd_resp_set_type(req, "application/json");
+    esp_err_t err = httpd_resp_send(req, json, HTTPD_RESP_USE_STRLEN);
+    cJSON_free(json);
+    return err;
+}
+
 /* GET /api/settings -> {timezone, clock, synced, custom_count} */
 static esp_err_t api_settings_get_handler(httpd_req_t *req)
 {
@@ -518,6 +536,11 @@ void web_server_start(void)
         .uri = "/api/history", .method = HTTP_GET, .handler = api_history_get_handler,
     };
     httpd_register_uri_handler(server, &history_uri);
+
+    httpd_uri_t recent_uri = {
+        .uri = "/api/recent", .method = HTTP_GET, .handler = api_recent_get_handler,
+    };
+    httpd_register_uri_handler(server, &recent_uri);
 
     httpd_uri_t settings_get_uri = {
         .uri = "/api/settings", .method = HTTP_GET, .handler = api_settings_get_handler,

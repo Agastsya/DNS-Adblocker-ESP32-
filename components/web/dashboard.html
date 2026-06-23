@@ -88,6 +88,17 @@
   .row2 { margin-top: 0.9rem; display: flex; gap: 0.6rem; align-items: center; }
   .saved { color: var(--ok); font-size: 0.88rem; opacity: 0; transition: opacity .2s; }
   .saved.show { opacity: 1; }
+  .live { margin: 0.2rem 0 0.4rem; }
+  .live li { padding: 0.5rem 0.1rem; gap: 0.6rem; }
+  .live .nm { flex: 1 1 auto; min-width: 0; font-size: 0.92rem; overflow: hidden;
+              text-overflow: ellipsis; white-space: nowrap;
+              font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .live .cip { color: var(--tertiary); font-size: 0.78rem; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+  .live .ago { color: var(--tertiary); font-size: 0.8rem; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+  .badge { font-size: 0.7rem; font-weight: 600; padding: 0.12rem 0.5rem; border-radius: 999px; flex-shrink: 0; }
+  .badge.blk { background: rgba(215,0,21,0.12); color: var(--danger); }
+  .badge.alw { background: rgba(0,113,227,0.12); color: var(--accent); }
+  .badge.cch { background: rgba(29,138,78,0.14); color: var(--ok); }
   footer { margin-top: 3rem; color: var(--tertiary); font-size: 0.82rem; }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -117,6 +128,11 @@
     <div class="graph">
       <div class="gh"><h3>Where queries went</h3><span>all time</span></div>
       <div style="position:relative; height:240px; max-width:260px; margin:0 auto;"><canvas id="breakdownChart"></canvas></div>
+    </div>
+
+    <div class="graph">
+      <div class="gh"><h3>Live activity</h3><span>recent lookups · which device, blocked or not</span></div>
+      <ul id="live-list" class="live"></ul>
     </div>
 
     <section>
@@ -338,12 +354,38 @@
       if (ip) { await post('/api/settings', {upstream: ip}, ()=>{}); flash('up-saved'); loadSettings(); }
     };
 
-    refresh(); drawChart();
+    // Live activity feed
+    function fmtAgo(s) { s = Math.max(0, s|0); if (s < 1) return 'now'; if (s < 60) return s + 's ago';
+      const m = Math.floor(s/60); if (m < 60) return m + 'm ago'; return Math.floor(m/60) + 'h ago'; }
+    async function loadRecent() {
+      try {
+        const items = await (await fetch('/api/recent')).json();
+        const ul = $('live-list'); ul.innerHTML = '';
+        if (!items.length) {
+          const li = document.createElement('li'); li.className = 'none';
+          li.textContent = 'No lookups yet — point a device’s DNS at this box and browse the web.';
+          ul.appendChild(li); return;
+        }
+        for (const it of items) {
+          const li = document.createElement('li');
+          const cls = it.act === 1 ? 'blk' : (it.act === 2 ? 'cch' : 'alw');
+          const lbl = it.act === 1 ? 'Blocked' : (it.act === 2 ? 'Cached' : 'Allowed');
+          const b = document.createElement('span'); b.className = 'badge ' + cls; b.textContent = lbl;
+          const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = it.name || '(root)';
+          const ip = document.createElement('span'); ip.className = 'cip'; ip.textContent = it.ip;
+          const ago = document.createElement('span'); ago.className = 'ago'; ago.textContent = fmtAgo(it.ago);
+          li.append(b, nm, ip, ago); ul.appendChild(li);
+        }
+      } catch (e) {}
+    }
+
+    refresh(); drawChart(); loadRecent();
     getList('/api/blocklist','bl-list',blRm,'Nothing blocked yet.');
     getList('/api/whitelist','wl-list',wlRm,'Nothing allowed yet.');
     fetch('/api/schedules').then(r=>r.json()).then(renderSchedules).catch(()=>{});
     loadCustom(); loadSettings();
     setInterval(refresh, 2000);
+    setInterval(loadRecent, 2000);
     setInterval(drawChart, 30000);
     setInterval(loadSettings, 10000);
   </script>
