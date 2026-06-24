@@ -9,8 +9,15 @@
 #include "esp_log.h"
 #include "esp_netif_sntp.h"
 #include "cJSON.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 
 static const char *TAG = "schedule";
+
+/* Guards s_schedules/s_schedule_count: every DNS worker reads this on
+ * every query while the dashboard's REST API can add/remove a schedule
+ * from a different task at any moment. */
+static SemaphoreHandle_t s_sched_lock = NULL;
 
 #define SCHEDULE_MAX         16
 #define SCHEDULE_MAX_DOMAIN  128
@@ -82,7 +89,14 @@ bool schedule_is_blocked_now(const char *domain)
     }
 
     int now_min = tm_now.tm_hour * 60 + tm_now.tm_min;
-    return schedule_domain_blocked_at(domain, now_min);
+    if (s_sched_lock) {
+        xSemaphoreTake(s_sched_lock, portMAX_DELAY);
+    }
+    bool blocked = schedule_domain_blocked_at(domain, now_min);
+    if (s_sched_lock) {
+        xSemaphoreGive(s_sched_lock);
+    }
+    return blocked;
 }
 
 static void schedule_save(void)
@@ -112,6 +126,9 @@ static void schedule_save(void)
 
 esp_err_t schedule_init(void)
 {
+    if (s_sched_lock == NULL) {
+        s_sched_lock = xSemaphoreCreateMutex();
+    }
     s_schedule_count = 0;
 
     FILE *f = fopen(SCHEDULE_PATH, "r");
@@ -227,6 +244,7 @@ bool schedule_add(const char *domain, int start_min, int end_min)
     if (start_min < 0 || start_min > 1439 || end_min < 0 || end_min > 1439) {
         return false;
     }
+    xSemaphoreTake(s_sched_lock, portMAX_DELAY);
     /* Replace an existing schedule for the same domain rather than
      * stacking duplicates. */
     for (size_t i = 0; i < s_schedule_count; i++) {
@@ -234,10 +252,12 @@ bool schedule_add(const char *domain, int start_min, int end_min)
             s_schedules[i].start_min = start_min;
             s_schedules[i].end_min = end_min;
             schedule_save();
+            xSemaphoreGive(s_sched_lock);
             return true;
         }
     }
     if (s_schedule_count >= SCHEDULE_MAX) {
+        xSemaphoreGive(s_sched_lock);
         return false;
     }
     schedule_entry_t *e = &s_schedules[s_schedule_count++];
@@ -245,6 +265,7 @@ bool schedule_add(const char *domain, int start_min, int end_min)
     e->start_min = start_min;
     e->end_min = end_min;
     schedule_save();
+    xSemaphoreGive(s_sched_lock);
     ESP_LOGI(TAG, "Scheduled %s blocked %02d:%02d-%02d:%02d",
              domain, start_min / 60, start_min % 60, end_min / 60, end_min % 60);
     return true;
@@ -252,6 +273,7 @@ bool schedule_add(const char *domain, int start_min, int end_min)
 
 bool schedule_remove(const char *domain)
 {
+    xSemaphoreTake(s_sched_lock, portMAX_DELAY);
     for (size_t i = 0; i < s_schedule_count; i++) {
         if (strcasecmp(s_schedules[i].domain, domain) == 0) {
             if (i != s_schedule_count - 1) {
@@ -259,9 +281,11 @@ bool schedule_remove(const char *domain)
             }
             s_schedule_count--;
             schedule_save();
+            xSemaphoreGive(s_sched_lock);
             return true;
         }
     }
+    xSemaphoreGive(s_sched_lock);
     return false;
 }
 

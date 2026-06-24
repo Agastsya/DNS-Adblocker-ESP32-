@@ -31,6 +31,7 @@ static const char *s_blocklist[] = {
     "googleadservices.com",
     "google-analytics.com",
     "googletagmanager.com",
+    "tagmanager.google.com",
     "scorecardresearch.com",
     "adsystem.amazon.com",
     "ads.yahoo.com",
@@ -150,6 +151,14 @@ static size_t s_manualblock_count = 0;
 static char  *s_custom_buf = NULL;
 static char **s_custom_entries = NULL;
 static size_t s_custom_count = 0;
+
+/* Guards s_whitelist*, s_manualblock*, s_custom_*: the DNS worker pool
+ * reads these on every query while the dashboard's REST API can rewrite
+ * them at any moment (e.g. uploading a new custom list frees+reallocs
+ * s_custom_entries). Without this lock a worker mid-read can dereference
+ * memory that was just freed - a real use-after-free, not just a stale
+ * read - which crashes/corrupts unpredictably depending purely on timing. */
+static SemaphoreHandle_t s_lists_lock = NULL;
 
 /* --------------------------------------------------------------------------
  * Cloud blocklist: a large domain list (tens of thousands of entries),
@@ -573,22 +582,27 @@ bool blocklist_whitelist_add(const char *domain)
     if (domain == NULL || domain[0] == '\0' || strlen(domain) >= WHITELIST_MAX_DOMAIN) {
         return false;
     }
+    xSemaphoreTake(s_lists_lock, portMAX_DELAY);
     for (size_t i = 0; i < s_whitelist_count; i++) {
         if (strcasecmp(s_whitelist[i], domain) == 0) {
+            xSemaphoreGive(s_lists_lock);
             return true;  /* already present - idempotent */
         }
     }
     if (s_whitelist_count >= WHITELIST_MAX) {
+        xSemaphoreGive(s_lists_lock);
         return false;
     }
     strcpy(s_whitelist[s_whitelist_count++], domain);
     whitelist_save();
+    xSemaphoreGive(s_lists_lock);
     ESP_LOGI(TAG, "Whitelisted %s (%u total)", domain, (unsigned)s_whitelist_count);
     return true;
 }
 
 bool blocklist_whitelist_remove(const char *domain)
 {
+    xSemaphoreTake(s_lists_lock, portMAX_DELAY);
     for (size_t i = 0; i < s_whitelist_count; i++) {
         if (strcasecmp(s_whitelist[i], domain) == 0) {
             /* Compact the gap by moving the last entry into this slot. */
@@ -597,10 +611,12 @@ bool blocklist_whitelist_remove(const char *domain)
             }
             s_whitelist_count--;
             whitelist_save();
+            xSemaphoreGive(s_lists_lock);
             ESP_LOGI(TAG, "Un-whitelisted %s (%u total)", domain, (unsigned)s_whitelist_count);
             return true;
         }
     }
+    xSemaphoreGive(s_lists_lock);
     return false;
 }
 
@@ -681,22 +697,27 @@ bool blocklist_manual_add(const char *domain)
     if (domain == NULL || domain[0] == '\0' || strlen(domain) >= MANUALBLOCK_MAX_DOMAIN) {
         return false;
     }
+    xSemaphoreTake(s_lists_lock, portMAX_DELAY);
     for (size_t i = 0; i < s_manualblock_count; i++) {
         if (strcasecmp(s_manualblock[i], domain) == 0) {
+            xSemaphoreGive(s_lists_lock);
             return true;  /* already present - idempotent */
         }
     }
     if (s_manualblock_count >= MANUALBLOCK_MAX) {
+        xSemaphoreGive(s_lists_lock);
         return false;
     }
     strcpy(s_manualblock[s_manualblock_count++], domain);
     manualblock_save();
+    xSemaphoreGive(s_lists_lock);
     ESP_LOGI(TAG, "Manually blocked %s (%u total)", domain, (unsigned)s_manualblock_count);
     return true;
 }
 
 bool blocklist_manual_remove(const char *domain)
 {
+    xSemaphoreTake(s_lists_lock, portMAX_DELAY);
     for (size_t i = 0; i < s_manualblock_count; i++) {
         if (strcasecmp(s_manualblock[i], domain) == 0) {
             if (i != s_manualblock_count - 1) {
@@ -704,10 +725,12 @@ bool blocklist_manual_remove(const char *domain)
             }
             s_manualblock_count--;
             manualblock_save();
+            xSemaphoreGive(s_lists_lock);
             ESP_LOGI(TAG, "Un-blocked %s (%u total)", domain, (unsigned)s_manualblock_count);
             return true;
         }
     }
+    xSemaphoreGive(s_lists_lock);
     return false;
 }
 
@@ -729,70 +752,65 @@ char *blocklist_manual_to_json(void)
  * User-uploaded custom blocklist (bulk paste/import).
  * ------------------------------------------------------------------------ */
 
-/* Split the loaded buffer into line pointers, skipping blanks/comments and
- * trimming CR. Mutates s_custom_buf in place. */
-static void custom_rebuild_index(void)
+/* Loads the new list into LOCAL variables first, and only swaps them into
+ * the shared s_custom_* globals (under the lock) once fully built. A
+ * worker task reading s_custom_entries under the same lock therefore
+ * never sees a freed/half-built array - the old list stays valid right up
+ * until the atomic swap. Call with s_lists_lock held. */
+static void custom_load_locked(void)
 {
-    free(s_custom_entries);
-    s_custom_entries = NULL;
-    s_custom_count = 0;
-    if (s_custom_buf == NULL) {
-        return;
-    }
-
-    size_t cap = 0;
-    for (char *p = s_custom_buf; *p; p++) {
-        if (*p == '\n') cap++;
-    }
-    cap += 1;
-    s_custom_entries = malloc(cap * sizeof(char *));
-    if (s_custom_entries == NULL) {
-        return;
-    }
-
-    char *p = s_custom_buf;
-    while (*p) {
-        char *eol = strchr(p, '\n');
-        if (eol) *eol = '\0';
-        size_t len = strlen(p);
-        if (len && p[len - 1] == '\r') p[len - 1] = '\0';
-        if (p[0] != '\0' && p[0] != '#' && s_custom_count < cap) {
-            s_custom_entries[s_custom_count++] = p;
-        }
-        if (!eol) break;
-        p = eol + 1;
-    }
-}
-
-static void custom_load(void)
-{
-    free(s_custom_buf);
-    s_custom_buf = NULL;
-    free(s_custom_entries);
-    s_custom_entries = NULL;
-    s_custom_count = 0;
+    char *new_buf = NULL;
+    char **new_entries = NULL;
+    size_t new_count = 0;
 
     FILE *f = fopen(CUSTOMBLOCK_PATH, "r");
-    if (f == NULL) {
-        return;
-    }
-    fseek(f, 0, SEEK_END);
-    long size = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    if (size <= 0 || size > CUSTOMBLOCK_MAX_BYTES) {
-        if (size > CUSTOMBLOCK_MAX_BYTES) ESP_LOGW(TAG, "Custom blocklist too big, ignoring");
+    if (f != NULL) {
+        fseek(f, 0, SEEK_END);
+        long size = ftell(f);
+        fseek(f, 0, SEEK_SET);
+        if (size > 0 && size <= CUSTOMBLOCK_MAX_BYTES) {
+            new_buf = malloc((size_t)size + 1);
+            if (new_buf != NULL) {
+                size_t n = fread(new_buf, 1, (size_t)size, f);
+                new_buf[n] = '\0';
+            }
+        } else if (size > CUSTOMBLOCK_MAX_BYTES) {
+            ESP_LOGW(TAG, "Custom blocklist too big, ignoring");
+        }
         fclose(f);
-        return;
     }
-    s_custom_buf = malloc((size_t)size + 1);
-    if (s_custom_buf == NULL) {
-        fclose(f);
-        return;
+
+    if (new_buf != NULL) {
+        size_t cap = 1;
+        for (char *p = new_buf; *p; p++) {
+            if (*p == '\n') cap++;
+        }
+        new_entries = malloc(cap * sizeof(char *));
+        if (new_entries != NULL) {
+            char *p = new_buf;
+            while (*p) {
+                char *eol = strchr(p, '\n');
+                if (eol) *eol = '\0';
+                size_t len = strlen(p);
+                if (len && p[len - 1] == '\r') p[len - 1] = '\0';
+                if (p[0] != '\0' && p[0] != '#' && new_count < cap) {
+                    new_entries[new_count++] = p;
+                }
+                if (!eol) break;
+                p = eol + 1;
+            }
+        } else {
+            free(new_buf);
+            new_buf = NULL;
+        }
     }
-    size_t n = fread(s_custom_buf, 1, (size_t)size, f);
-    fclose(f);
-    s_custom_buf[n] = '\0';
-    custom_rebuild_index();
+
+    /* Atomic swap: free the OLD arrays only after the NEW ones are ready. */
+    free(s_custom_buf);
+    free(s_custom_entries);
+    s_custom_buf = new_buf;
+    s_custom_entries = new_entries;
+    s_custom_count = new_count;
     ESP_LOGI(TAG, "Custom blocklist: %u domains", (unsigned)s_custom_count);
 }
 
@@ -810,7 +828,9 @@ bool blocklist_custom_set(const char *text)
     }
     fputs(text, f);
     fclose(f);
-    custom_load();
+    xSemaphoreTake(s_lists_lock, portMAX_DELAY);
+    custom_load_locked();
+    xSemaphoreGive(s_lists_lock);
     return true;
 }
 
@@ -844,6 +864,9 @@ esp_err_t blocklist_init(void)
     if (s_idx_lock == NULL) {
         s_idx_lock = xSemaphoreCreateMutex();
     }
+    if (s_lists_lock == NULL) {
+        s_lists_lock = xSemaphoreCreateMutex();
+    }
 
     /* Remove the old string-list file from the previous design, if present,
      * so it doesn't waste the tight flash budget the index build needs. */
@@ -852,7 +875,9 @@ esp_err_t blocklist_init(void)
 
     whitelist_load();
     manualblock_load();
-    custom_load();
+    xSemaphoreTake(s_lists_lock, portMAX_DELAY);
+    custom_load_locked();
+    xSemaphoreGive(s_lists_lock);
 
     xSemaphoreTake(s_idx_lock, portMAX_DELAY);
     bool have_idx = index_load_locked();
@@ -948,26 +973,29 @@ static bool has_ad_subdomain_label(const char *domain)
 
 bool blocklist_is_blocked(const char *domain)
 {
-    /* Whitelist wins over everything. */
+    /* These three are user-managed lists the dashboard can rewrite at any
+     * moment from a different task, so they're read under the same lock
+     * the writers use - see s_lists_lock above. */
+    xSemaphoreTake(s_lists_lock, portMAX_DELAY);
     for (size_t i = 0; i < s_whitelist_count; i++) {
         if (domain_matches(domain, s_whitelist[i])) {
-            return false;
+            xSemaphoreGive(s_lists_lock);
+            return false;  /* whitelist wins over everything */
         }
     }
-
-    /* User's manual blocks, checked before the cloud/seed list. */
     for (size_t i = 0; i < s_manualblock_count; i++) {
         if (domain_matches(domain, s_manualblock[i])) {
+            xSemaphoreGive(s_lists_lock);
             return true;
         }
     }
-
-    /* User's uploaded custom blocklist. */
     for (size_t i = 0; i < s_custom_count; i++) {
         if (domain_matches(domain, s_custom_entries[i])) {
+            xSemaphoreGive(s_lists_lock);
             return true;
         }
     }
+    xSemaphoreGive(s_lists_lock);
 
     /* Built-in always-on list: enforced on every query, even after the
      * cloud index loads, so these can never slip through. */
