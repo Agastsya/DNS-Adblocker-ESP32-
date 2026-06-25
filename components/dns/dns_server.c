@@ -336,7 +336,11 @@ void dns_server_start(void)
         return;
     }
     for (int i = 0; i < DNS_WORKER_COUNT; i++) {
-        xTaskCreate(dns_worker_task, "dns_worker", 4096, NULL, 5, NULL);
+        /* 4096 was too tight: blocklist check + cache + CNAME extraction +
+         * stats persist (file I/O + cJSON) + logging all nest on this same
+         * stack, and it was overflowing under real traffic - crashing and
+         * rebooting the whole device on almost every query. */
+        xTaskCreate(dns_worker_task, "dns_worker", 8192, NULL, 5, NULL);
     }
     xTaskCreate(dns_listener_task, "dns_listener", 4096, NULL, 5, NULL);
     xTaskCreate(dns_tcp_listener_task, "dns_tcp", 4096, NULL, 5, NULL);
