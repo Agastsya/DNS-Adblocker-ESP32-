@@ -495,9 +495,15 @@ static void blocklist_sync_task(void *pvParameters)
 {
     /* Only sync immediately if there's no usable index yet (fresh device);
      * otherwise wait for the daily interval so we don't rebuild a list we
-     * just loaded at boot. */
-    if (!s_idx_ready) {
+     * just loaded at boot. Retry on a short interval until the first sync
+     * actually lands - a transient failure (router/DNS not fully up yet
+     * right after boot) shouldn't strand the device on the 72-domain
+     * built-in seed list for a whole day. */
+    while (!s_idx_ready) {
         do_sync();
+        if (!s_idx_ready) {
+            vTaskDelay(pdMS_TO_TICKS(60UL * 1000));
+        }
     }
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(SYNC_INTERVAL_MS));

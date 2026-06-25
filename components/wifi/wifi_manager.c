@@ -153,6 +153,22 @@ esp_err_t wifi_manager_connect(void)
     static_ip.gw.addr      = esp_ip4addr_aton(CONFIG_POCKETDNS_STATIC_GATEWAY);
     static_ip.netmask.addr = esp_ip4addr_aton(CONFIG_POCKETDNS_STATIC_NETMASK);
     ESP_ERROR_CHECK(esp_netif_set_ip_info(sta_netif, &static_ip));
+
+    /* DHCP normally hands us upstream DNS servers too - with it stopped,
+     * the netif has none, so this device's OWN lookups (blocklist download
+     * host, OTA check host, NTP pool) all fail even though it serves DNS
+     * to everyone else fine. Point its own resolver at public DNS so those
+     * outbound requests work regardless of what clients are told to use. */
+    esp_netif_dns_info_t dns_main = { 0 };
+    dns_main.ip.type = ESP_IPADDR_TYPE_V4;
+    dns_main.ip.u_addr.ip4.addr = esp_ip4addr_aton("1.1.1.1");
+    esp_netif_set_dns_info(sta_netif, ESP_NETIF_DNS_MAIN, &dns_main);
+
+    esp_netif_dns_info_t dns_backup = { 0 };
+    dns_backup.ip.type = ESP_IPADDR_TYPE_V4;
+    dns_backup.ip.u_addr.ip4.addr = esp_ip4addr_aton("8.8.8.8");
+    esp_netif_set_dns_info(sta_netif, ESP_NETIF_DNS_BACKUP, &dns_backup);
+
     ESP_LOGI(TAG, "Static IP configured: %s", CONFIG_POCKETDNS_STATIC_IP);
 #endif
 
