@@ -9,10 +9,30 @@
 #include "esp_netif.h"
 #include "nvs_flash.h"
 #include "nvs.h"
+#include "mdns.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 
+#define MDNS_HOSTNAME "pocketdns"
+
 static const char *TAG = "wifi_manager";
+
+/* Lets the dashboard be reached at http://pocketdns.local/ regardless of
+ * what IP DHCP hands out - the device's IP changes across reboots/lease
+ * renewals, which otherwise makes a bookmarked IP "go dead" and look like
+ * the whole thing is broken when it's just at a new address. */
+static void start_mdns(void)
+{
+    esp_err_t err = mdns_init();
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "mDNS init failed: %s (dashboard still reachable by IP)", esp_err_to_name(err));
+        return;
+    }
+    mdns_hostname_set(MDNS_HOSTNAME);
+    mdns_instance_name_set("PocketDNS");
+    mdns_service_add(NULL, "_http", "_tcp", 80, NULL, 0);
+    ESP_LOGI(TAG, "mDNS up - dashboard also reachable at http://%s.local/", MDNS_HOSTNAME);
+}
 
 /* Bits set on s_wifi_event_group to report the outcome of a connection
  * attempt back to wifi_manager_connect(), which blocks waiting for one. */
@@ -151,6 +171,7 @@ esp_err_t wifi_manager_connect(void)
     esp_err_t result = ESP_FAIL;
     if (bits & WIFI_CONNECTED_BIT) {
         ESP_LOGI(TAG, "Wi-Fi connected");
+        start_mdns();
         result = ESP_OK;
     } else if (bits & WIFI_FAIL_BIT) {
         ESP_LOGE(TAG, "Failed to connect after %d attempts", CONFIG_POCKETDNS_WIFI_MAXIMUM_RETRY);

@@ -1,0 +1,8 @@
+# ==========================================================================
+# mDNS so the dashboard is always reachable at http://pocketdns.local/,
+# regardless of what IP the router's DHCP hands out (it changes across
+# reboots, which kept making the device look "dead" - see wifi_manager.c).
+# ==========================================================================
+dependencies:
+  idf: ">=5.5"
+  espressif/mdns: "^1.2"
