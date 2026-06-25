@@ -51,6 +51,16 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
 {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
         esp_wifi_connect();
+#if CONFIG_POCKETDNS_STATIC_IP_ENABLE
+    } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_CONNECTED) {
+        /* With a static IP, the DHCP client (which normally posts
+         * IP_EVENT_STA_GOT_IP once a lease is granted) never runs - so
+         * that event never fires. Association success is as good as it
+         * gets here; the IP was already configured before esp_wifi_start(). */
+        ESP_LOGI(TAG, "Associated (static IP %s)", CONFIG_POCKETDNS_STATIC_IP);
+        s_retry_num = 0;
+        xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
+#endif
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
         if (s_retry_num < CONFIG_POCKETDNS_WIFI_MAXIMUM_RETRY) {
             s_retry_num++;
@@ -129,7 +139,22 @@ esp_err_t wifi_manager_connect(void)
      * consistently-initialised state and just switch the radio to AP. */
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
-    esp_netif_create_default_wifi_sta();
+    esp_netif_t *sta_netif = esp_netif_create_default_wifi_sta();
+
+#if CONFIG_POCKETDNS_STATIC_IP_ENABLE
+    /* A static IP means a bookmark/DNS setting pointed at this device never
+     * goes stale after a reboot or DHCP lease renewal - the recurring
+     * "dashboard looks dead" issue whenever the router handed out a new
+     * address. Must be set before esp_wifi_start(); DHCP client is stopped
+     * first since it would otherwise overwrite this once connected. */
+    esp_netif_dhcpc_stop(sta_netif);
+    esp_netif_ip_info_t static_ip = { 0 };
+    static_ip.ip.addr      = esp_ip4addr_aton(CONFIG_POCKETDNS_STATIC_IP);
+    static_ip.gw.addr      = esp_ip4addr_aton(CONFIG_POCKETDNS_STATIC_GATEWAY);
+    static_ip.netmask.addr = esp_ip4addr_aton(CONFIG_POCKETDNS_STATIC_NETMASK);
+    ESP_ERROR_CHECK(esp_netif_set_ip_info(sta_netif, &static_ip));
+    ESP_LOGI(TAG, "Static IP configured: %s", CONFIG_POCKETDNS_STATIC_IP);
+#endif
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));

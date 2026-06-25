@@ -11,6 +11,7 @@
 static const char *TAG = "dns_stats";
 
 #define STATS_PATH               "/littlefs/statistics.json"
+#define STATS_TMP_PATH           "/littlefs/statistics.json.tmp"
 #define PERSIST_EVERY_N_QUERIES  10
 
 static dns_stats_t s_stats;
@@ -92,18 +93,27 @@ bool dns_stats_from_json(const char *json, dns_stats_t *out)
     return true;
 }
 
+/* Write to a temp file and rename over the real one, rather than
+ * truncating STATS_PATH in place. This device gets power-cycled/reflashed
+ * a lot; truncate-then-write leaves a half-written, unparseable file if
+ * that happens mid-write, silently resetting the lifetime counter to 0 on
+ * every later boot. rename() is atomic on LittleFS, so the real file is
+ * always either the old complete one or the new complete one. */
 static void persist(void)
 {
     char *json = dns_stats_to_json(&s_stats);
     if (json == NULL) {
         return;
     }
-    FILE *f = fopen(STATS_PATH, "w");
+    FILE *f = fopen(STATS_TMP_PATH, "w");
     if (f != NULL) {
         fputs(json, f);
         fclose(f);
+        if (rename(STATS_TMP_PATH, STATS_PATH) != 0) {
+            ESP_LOGW(TAG, "Could not rename %s -> %s", STATS_TMP_PATH, STATS_PATH);
+        }
     } else {
-        ESP_LOGW(TAG, "Could not open %s for writing", STATS_PATH);
+        ESP_LOGW(TAG, "Could not open %s for writing", STATS_TMP_PATH);
     }
     cJSON_free(json);
 }

@@ -21,4 +21,30 @@ menu "PocketDNS Configuration"
             How many times to retry connecting before giving up and
             continuing to boot without Wi-Fi.
 
+    config POCKETDNS_STATIC_IP_ENABLE
+        bool "Use a static IP instead of DHCP"
+        default n
+        help
+            DHCP can hand this device a different address after a reboot
+            or lease renewal, which silently breaks any bookmark/DNS
+            setting pointed at the old IP. Enable this to always use the
+            same fixed address instead. (http://pocketdns.local/ via mDNS
+            also solves this without needing a static IP - this is for
+            networks/clients where that's not convenient.)
+
+    config POCKETDNS_STATIC_IP
+        string "Static IP address"
+        default "192.168.0.102"
+        depends on POCKETDNS_STATIC_IP_ENABLE
+
+    config POCKETDNS_STATIC_GATEWAY
+        string "Gateway IP address"
+        default "192.168.0.1"
+        depends on POCKETDNS_STATIC_IP_ENABLE
+
+    config POCKETDNS_STATIC_NETMASK
+        string "Subnet mask"
+        default "255.255.255.0"
+        depends on POCKETDNS_STATIC_IP_ENABLE
+
 endmenu
