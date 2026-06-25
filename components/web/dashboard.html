@@ -24,7 +24,7 @@
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
     -webkit-font-smoothing: antialiased; line-height: 1.47;
   }
-  .wrap { max-width: 760px; margin: 0 auto; padding: 2.6rem 1.4rem 5rem; }
+  .wrap { max-width: 1480px; margin: 0 auto; padding: 2.6rem 2.2rem 5rem; }
 
   header { display: flex; align-items: center; gap: 0.85rem; margin-bottom: 2.4rem; }
   .mark { width: 40px; height: 40px; border-radius: 11px; background: var(--accent);
@@ -38,7 +38,8 @@
   .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--tertiary); }
   .dot.on { background: var(--ok); } .dot.off { background: var(--danger); }
 
-  .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.7rem; margin-bottom: 1.5rem; }
+  .cards { display: grid; grid-template-columns: repeat(6, 1fr); gap: 0.7rem; margin-bottom: 1.5rem; }
+  @media (max-width: 1100px) { .cards { grid-template-columns: repeat(3, 1fr); } }
   @media (max-width: 560px) { .cards { grid-template-columns: repeat(2, 1fr); } }
   .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
           padding: 1rem 1.1rem; box-shadow: var(--shadow); }
@@ -46,8 +47,12 @@
   .card .l { font-size: 0.82rem; color: var(--secondary); margin-top: 0.1rem; }
   .card.b .n { color: var(--danger); }
 
+  .maingrid { display: grid; grid-template-columns: 1.6fr 1fr; gap: 1.4rem; align-items: start; }
+  .panels { display: grid; grid-template-columns: 1fr 1fr; gap: 1.4rem; align-items: start; }
+  @media (max-width: 900px) { .maingrid, .panels { grid-template-columns: 1fr; } }
+
   .graph { background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
-           padding: 1.1rem 1.2rem 0.6rem; box-shadow: var(--shadow); margin-bottom: 2.2rem; }
+           padding: 1.1rem 1.2rem 0.6rem; box-shadow: var(--shadow); margin-bottom: 1.4rem; }
   .graph .gh { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 0.7rem; }
   .graph .gh h3 { margin: 0; font-size: 1rem; font-weight: 600; }
   .graph .gh span { font-size: 0.8rem; color: var(--tertiary); }
@@ -55,8 +60,9 @@
   .legend { display: flex; gap: 1rem; font-size: 0.78rem; color: var(--secondary); padding: 0.5rem 0.1rem 0.2rem; }
   .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 0.35rem; vertical-align: -1px; }
 
-  section { border-top: 1px solid var(--line); padding: 2rem 0 0.4rem; }
-  section h2 { font-size: 1.3rem; font-weight: 600; letter-spacing: -0.02em; margin: 0 0 0.25rem; }
+  section { background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+            box-shadow: var(--shadow); padding: 1.5rem 1.6rem 1.7rem; margin-bottom: 1.4rem; }
+  section h2 { font-size: 1.2rem; font-weight: 600; letter-spacing: -0.02em; margin: 0 0 0.25rem; }
   section .note { color: var(--secondary); font-size: 0.92rem; margin: 0 0 1.2rem; max-width: 52ch; }
 
   .field { display: flex; gap: 0.55rem; flex-wrap: wrap; align-items: center; }
@@ -118,72 +124,82 @@
     </header>
 
     <div class="cards">
-      <div class="card"><div class="n" id="total_queries">–</div><div class="l">Queries (24h)</div></div>
+      <div class="card"><div class="n" id="total_queries">–</div><div class="l">Total queries</div></div>
       <div class="card b"><div class="n" id="blocked">–</div><div class="l" id="blocked_l">Blocked</div></div>
       <div class="card"><div class="n" id="cache_hits">–</div><div class="l">Cached</div></div>
       <div class="card"><div class="n" id="forwarded">–</div><div class="l">Forwarded</div></div>
+      <div class="card"><div class="n" id="forward_failures">–</div><div class="l">Failed</div></div>
+      <div class="card"><div class="n" id="devices">–</div><div class="l">Devices active</div></div>
     </div>
 
     <div class="banner" id="dnsbanner">To start blocking, set your devices’ (or your router’s) DNS server to this box:
       <b id="dev-ip">…</b>. All zeros below just means nothing is pointed here yet.</div>
 
-    <div class="graph">
-      <div class="gh"><h3>Activity</h3><span>last 24 hours</span></div>
-      <div style="position:relative; height:170px; width:100%;"><canvas id="activityChart"></canvas></div>
+    <div class="maingrid">
+      <div>
+        <div class="graph">
+          <div class="gh"><h3>Activity</h3><span>last 24 hours</span></div>
+          <div style="position:relative; height:170px; width:100%;"><canvas id="activityChart"></canvas></div>
+        </div>
+
+        <div class="graph">
+          <div class="gh"><h3>Live activity</h3><span>recent lookups · which device, blocked or not</span></div>
+          <ul id="live-list" class="live"></ul>
+        </div>
+      </div>
+
+      <div>
+        <div class="graph">
+          <div class="gh"><h3>Where queries went</h3><span>all time, total</span></div>
+          <div style="position:relative; height:240px; max-width:260px; margin:0 auto;"><canvas id="breakdownChart"></canvas></div>
+        </div>
+      </div>
     </div>
 
-    <div class="graph">
-      <div class="gh"><h3>Where queries went</h3><span>all time</span></div>
-      <div style="position:relative; height:240px; max-width:260px; margin:0 auto;"><canvas id="breakdownChart"></canvas></div>
+    <div class="panels">
+      <section>
+        <h2>Block a website</h2>
+        <p class="note">Add a domain to block it on every device using PocketDNS. Subdomains are included.</p>
+        <div class="field">
+          <input type="text" id="bl-input" placeholder="facebook.com" autocomplete="off" autocapitalize="off" spellcheck="false">
+          <button id="bl-add">Block</button>
+        </div>
+        <ul id="bl-list"></ul>
+      </section>
+
+      <section>
+        <h2>Allowed</h2>
+        <p class="note">Domains here are never blocked, even if a blocklist contains them.</p>
+        <div class="field">
+          <input type="text" id="wl-input" placeholder="example.com" autocomplete="off" autocapitalize="off" spellcheck="false">
+          <button id="wl-add">Allow</button>
+        </div>
+        <ul id="wl-list"></ul>
+      </section>
+
+      <section>
+        <h2>Upload a blocklist</h2>
+        <p class="note">Paste your own list, one domain per line (up to ~2,000). These are blocked in addition to the built-in list. Saving replaces the current custom list.</p>
+        <textarea id="cl-text" placeholder="ads.example.com&#10;tracker.example.net&#10;..."></textarea>
+        <div class="row2">
+          <button id="cl-save">Save list</button>
+          <span class="saved" id="cl-saved">Saved ✓</span>
+          <span class="none" id="cl-count"></span>
+        </div>
+      </section>
+
+      <section>
+        <h2>Parental controls</h2>
+        <p class="note">Block a domain during a daily time window. Times use the device's local clock (<b id="tznow">--:--</b>) — set your timezone below if that's wrong.</p>
+        <div class="field">
+          <input type="text" id="sc-domain" placeholder="youtube.com" autocomplete="off" autocapitalize="off" spellcheck="false">
+          <input type="time" id="sc-start" value="21:00">
+          <input type="time" id="sc-end" value="07:00">
+          <button id="sc-add">Add</button>
+        </div>
+        <ul id="sc-list"></ul>
+      </section>
     </div>
-
-    <div class="graph">
-      <div class="gh"><h3>Live activity</h3><span>recent lookups · which device, blocked or not</span></div>
-      <ul id="live-list" class="live"></ul>
-    </div>
-
-    <section>
-      <h2>Block a website</h2>
-      <p class="note">Add a domain to block it on every device using PocketDNS. Subdomains are included.</p>
-      <div class="field">
-        <input type="text" id="bl-input" placeholder="facebook.com" autocomplete="off" autocapitalize="off" spellcheck="false">
-        <button id="bl-add">Block</button>
-      </div>
-      <ul id="bl-list"></ul>
-    </section>
-
-    <section>
-      <h2>Upload a blocklist</h2>
-      <p class="note">Paste your own list, one domain per line (up to ~2,000). These are blocked in addition to the built-in list. Saving replaces the current custom list.</p>
-      <textarea id="cl-text" placeholder="ads.example.com&#10;tracker.example.net&#10;..."></textarea>
-      <div class="row2">
-        <button id="cl-save">Save list</button>
-        <span class="saved" id="cl-saved">Saved ✓</span>
-        <span class="none" id="cl-count"></span>
-      </div>
-    </section>
-
-    <section>
-      <h2>Allowed</h2>
-      <p class="note">Domains here are never blocked, even if a blocklist contains them.</p>
-      <div class="field">
-        <input type="text" id="wl-input" placeholder="example.com" autocomplete="off" autocapitalize="off" spellcheck="false">
-        <button id="wl-add">Allow</button>
-      </div>
-      <ul id="wl-list"></ul>
-    </section>
-
-    <section>
-      <h2>Parental controls</h2>
-      <p class="note">Block a domain during a daily time window. Times use the device's local clock (<b id="tznow">--:--</b>) — set your timezone below if that's wrong.</p>
-      <div class="field">
-        <input type="text" id="sc-domain" placeholder="youtube.com" autocomplete="off" autocapitalize="off" spellcheck="false">
-        <input type="time" id="sc-start" value="21:00">
-        <input type="time" id="sc-end" value="07:00">
-        <button id="sc-add">Add</button>
-      </div>
-      <ul id="sc-list"></ul>
-    </section>
 
     <section>
       <h2>Settings</h2>
@@ -236,6 +252,7 @@
         $('blocked').textContent = fmt(d.blocked);
         $('cache_hits').textContent = fmt(d.cache_hits);
         $('forwarded').textContent = fmt(d.forwarded);
+        $('forward_failures').textContent = fmt(d.forward_failures || 0);
         const pct = d.total_queries ? Math.round(d.blocked / d.total_queries * 100) : 0;
         $('blocked_l').textContent = 'Blocked · ' + pct + '%';
         $('dot').className = 'dot on';
@@ -344,8 +361,9 @@
         $('clock').textContent = s.clock; $('clock2').textContent = s.clock; $('tznow').textContent = s.clock;
         $('syncwarn').textContent = s.synced ? '' : '(waiting for internet time…)';
         if (s.ip) $('dev-ip').textContent = s.ip;
+        const dev = s.clients || 0;
+        $('devices').textContent = fmt(dev);
         if (s.blocklist_count) {
-          const dev = s.clients || 0;
           $('sub').textContent = 'Blocking ' + fmt(s.blocklist_count) + ' domains · '
             + dev + ' device' + (dev === 1 ? '' : 's') + ' active';
         }
@@ -409,8 +427,8 @@
     getList('/api/whitelist','wl-list',wlRm,'Nothing allowed yet.');
     fetch('/api/schedules').then(r=>r.json()).then(renderSchedules).catch(()=>{});
     loadCustom(); loadSettings();
-    setInterval(refresh, 2000);
-    setInterval(loadRecent, 2000);
+    setInterval(refresh, 3000);
+    setInterval(loadRecent, 3000);
     setInterval(drawChart, 30000);
     setInterval(loadSettings, 10000);
   </script>

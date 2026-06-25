@@ -326,6 +326,7 @@ void dns_server_start(void)
     dns_cache_init();
     dns_log_init();
     dns_stats_init();
+    dns_stats_start_autosave();
     schedule_init();
     schedule_start_time_sync();
 

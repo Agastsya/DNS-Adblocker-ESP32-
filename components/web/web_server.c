@@ -480,10 +480,17 @@ void web_server_start(void)
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.max_uri_handlers = 20;   /* default 8 is too few for our REST API */
     config.stack_size = 8192;       /* JSON building + larger list responses */
-    /* The dashboard polls several endpoints every couple of seconds. Without
-     * this, once max_open_sockets fills the server REFUSES new connections,
-     * so whichever poll loses the race (often the live feed) silently stops
-     * updating. Recycle the least-recently-used connection instead. */
+    /* The dashboard polls several endpoints every couple of seconds, and the
+     * default of 7 (4 usable - 3 are reserved internally) is enough for ONE
+     * viewer but gets contested fast with several devices/tabs open at once,
+     * which looked like "the dashboard works sometimes and not other times".
+     * Raised alongside CONFIG_LWIP_MAX_SOCKETS so there's still headroom for
+     * the DNS server's own sockets. */
+    config.max_open_sockets = 13;
+    /* Without this, once max_open_sockets fills the server REFUSES new
+     * connections, so whichever poll loses the race (often the live feed)
+     * silently stops updating. Recycle the least-recently-used connection
+     * instead. */
     config.lru_purge_enable = true;
     httpd_handle_t server = NULL;
 

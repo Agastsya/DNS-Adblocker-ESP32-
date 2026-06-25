@@ -6,21 +6,32 @@
 #include <time.h>
 
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "cJSON.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 static const char *TAG = "dns_stats";
 
 #define STATS_PATH               "/littlefs/statistics.json"
 #define STATS_TMP_PATH           "/littlefs/statistics.json.tmp"
+#define HIST_PATH                "/littlefs/stat_history.bin"
+#define HIST_TMP_PATH            "/littlefs/stat_history.bin.tmp"
 #define PERSIST_EVERY_N_QUERIES  10
+#define PERSIST_MAX_INTERVAL_US  (20LL * 1000 * 1000)  /* 20s ceiling, checked on each query */
+#define AUTOSAVE_INTERVAL_MS     (30UL * 1000)          /* background safety net, see below */
 
 static dns_stats_t s_stats;
 static uint32_t s_since_last_checkpoint = 0;
+static int64_t s_last_persist_us = 0;
+static volatile bool s_dirty = false;
 
 /* Rolling 24h query history for the dashboard graph: 48 buckets of 30 min.
  * Each bucket records totals for one 30-min wall-clock slot; the `slot`
  * field marks which slot it currently holds so stale buckets (from >24h
- * ago) are recycled. RAM-only - the graph resets on reboot, which is fine. */
+ * ago) are recycled. Persisted to flash alongside the lifetime counters
+ * (see persist_history() below) so the graph survives a reboot instead of
+ * going blank. */
 #define HIST_BUCKETS  48
 #define HIST_SECONDS  1800   /* 30 min per bucket */
 
@@ -118,19 +129,94 @@ static void persist(void)
     cJSON_free(json);
 }
 
+/* Same atomic write-to-temp-then-rename pattern as persist(), for the 24h
+ * history buckets - a flat binary dump since this is never read by anything
+ * but this file (the dashboard gets it pre-converted via dns_stats_history_to_json). */
+static void persist_history(void)
+{
+    FILE *f = fopen(HIST_TMP_PATH, "wb");
+    if (f == NULL) {
+        ESP_LOGW(TAG, "Could not open %s for writing", HIST_TMP_PATH);
+        return;
+    }
+    fwrite(s_hist, sizeof(s_hist), 1, f);
+    fclose(f);
+    if (rename(HIST_TMP_PATH, HIST_PATH) != 0) {
+        ESP_LOGW(TAG, "Could not rename %s -> %s", HIST_TMP_PATH, HIST_PATH);
+    }
+}
+
+static void load_history(void)
+{
+    FILE *f = fopen(HIST_PATH, "rb");
+    if (f == NULL) {
+        return;  /* fine - graph just starts empty */
+    }
+    if (fread(s_hist, sizeof(s_hist), 1, f) != 1) {
+        ESP_LOGW(TAG, "Could not read %s - starting history fresh", HIST_PATH);
+        memset(s_hist, 0, sizeof(s_hist));
+    }
+    fclose(f);
+}
+
+static void save_now(void)
+{
+    s_since_last_checkpoint = 0;
+    s_last_persist_us = esp_timer_get_time();
+    s_dirty = false;
+    persist();
+    persist_history();
+    dns_stats_log_summary();
+}
+
+/* Persists on whichever comes first: PERSIST_EVERY_N_QUERIES queries, or
+ * PERSIST_MAX_INTERVAL_US of wall-clock time since the last save. The
+ * count alone left a gap: a device that reboots before ever reaching 10
+ * queries (or with bursts of <10 between reboots) lost everything every
+ * time, which is exactly what "stats keep resetting" looked like. The time
+ * ceiling bounds the loss window during active traffic; dns_stats_autosave_task
+ * below covers the remaining case of a reboot during a quiet spell with no
+ * query at all to trigger this check. */
 void dns_stats_checkpoint(void)
 {
     s_since_last_checkpoint++;
-    if (s_since_last_checkpoint >= PERSIST_EVERY_N_QUERIES) {
-        s_since_last_checkpoint = 0;
-        persist();
-        dns_stats_log_summary();
+    int64_t now = esp_timer_get_time();
+    bool due_by_count = s_since_last_checkpoint >= PERSIST_EVERY_N_QUERIES;
+    bool due_by_time  = (now - s_last_persist_us) >= PERSIST_MAX_INTERVAL_US;
+
+    if (due_by_count || due_by_time) {
+        save_now();
     }
+}
+
+/* Background safety net: persists on a fixed cadence regardless of query
+ * traffic, but only if something actually changed since the last save - an
+ * idle device shouldn't churn flash writes for no reason. This is what
+ * catches a reboot during a quiet period (a few queries came in, then
+ * nothing, then a reboot) that the inline per-query check above can't see
+ * since it only runs when a query arrives. */
+static void dns_stats_autosave_task(void *pvParameters)
+{
+    while (1) {
+        vTaskDelay(pdMS_TO_TICKS(AUTOSAVE_INTERVAL_MS));
+        if (s_dirty) {
+            save_now();
+        }
+    }
+}
+
+void dns_stats_start_autosave(void)
+{
+    xTaskCreate(dns_stats_autosave_task, "stats_autosave", 3072, NULL, 2, NULL);
 }
 
 esp_err_t dns_stats_init(void)
 {
     memset(&s_stats, 0, sizeof(s_stats));
+    memset(s_hist, 0, sizeof(s_hist));
+    s_last_persist_us = esp_timer_get_time();
+
+    load_history();
 
     FILE *f = fopen(STATS_PATH, "r");
     if (f == NULL) {
@@ -158,6 +244,7 @@ void dns_stats_record_query(void)
 {
     s_stats.total_queries++;
     hist_current()->total++;
+    s_dirty = true;
 }
 
 void dns_stats_record_blocked(void)        { s_stats.blocked++; hist_current()->blocked++; }

@@ -23,10 +23,15 @@ void dns_stats_record_forwarded(void);
 void dns_stats_record_forward_failure(void);
 
 /* Call once a query's outcome (blocked/cache hit/forwarded/failed) has
- * been fully recorded. Every Nth call persists the running totals to
- * flash and logs a summary - on a query count rather than a wall-clock
- * timer, so no extra periodic task is needed. */
+ * been fully recorded. Persists the running totals (and 24h history) to
+ * flash once enough queries or enough time has passed since the last save. */
 void dns_stats_checkpoint(void);
+
+/* Starts a low-priority background task that persists stats on a fixed
+ * cadence if anything changed since the last save - catches a reboot
+ * during a quiet spell that dns_stats_checkpoint() alone wouldn't see
+ * (it only runs when a query arrives). Call once after dns_stats_init(). */
+void dns_stats_start_autosave(void);
 
 dns_stats_t dns_stats_get(void);
 

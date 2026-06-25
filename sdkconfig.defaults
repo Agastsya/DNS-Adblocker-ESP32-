@@ -41,7 +41,11 @@ CONFIG_LWIP_UDP_RECVMBOX_SIZE=32
 
 # More socket descriptors: UDP listener + per-worker upstream forwards + the
 # TCP DNS listener and its connections + the web server can run concurrently.
-CONFIG_LWIP_MAX_SOCKETS=16
+# Raised from 16: with several devices on the network each polling the
+# dashboard, the old budget left too little room for the HTTP server's own
+# connections (see web_server.c max_open_sockets) and caused it to refuse or
+# drop connections under load - "works sometimes, doesn't work sometimes".
+CONFIG_LWIP_MAX_SOCKETS=24
 
 # ==========================================================================
 #  >>> EDIT THESE TWO LINES with your home Wi-Fi, then build & flash. <<<
